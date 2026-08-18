@@ -60,6 +60,11 @@ export class SessionStyles implements vscode.Disposable {
 
   constructor(private readonly memento: vscode.Memento) {}
 
+  /** Whether colours are being handed out at all. */
+  autoColorsEnabled(): boolean {
+    return this.autoEnabled();
+  }
+
   private autoEnabled(): boolean {
     return vscode.workspace
       .getConfiguration('parallelo')
@@ -102,7 +107,11 @@ export class SessionStyles implements vscode.Disposable {
     return this.all()[this.keyFor(session)] ?? {};
   }
 
-  async update(session: Session, patch: SessionStyle): Promise<void> {
+  update(session: Session, patch: SessionStyle): Promise<void> {
+    return this.queue(() => this.updateNow(session, patch));
+  }
+
+  private async updateNow(session: Session, patch: SessionStyle): Promise<void> {
     const all = { ...this.all() };
     const key = this.keyFor(session);
     const next: SessionStyle = { ...all[key], ...patch };
@@ -121,7 +130,11 @@ export class SessionStyles implements vscode.Disposable {
     this._onDidChange.fire();
   }
 
-  async clear(session: Session): Promise<void> {
+  clear(session: Session): Promise<void> {
+    return this.queue(() => this.clearNow(session));
+  }
+
+  private async clearNow(session: Session): Promise<void> {
     const all = { ...this.all() };
     delete all[this.keyFor(session)];
     await this.memento.update(KEY, all);
@@ -252,7 +265,11 @@ export class SessionStyles implements vscode.Disposable {
    * worktree ever seen and never shrinks. Runs once on activation; a handful
    * of `stat` calls, and only against paths already stored.
    */
-  async prune(): Promise<void> {
+  prune(): Promise<void> {
+    return this.queue(() => this.pruneNow());
+  }
+
+  private async pruneNow(): Promise<void> {
     const all = { ...this.all() };
     const gone: string[] = [];
 

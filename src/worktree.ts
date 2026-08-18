@@ -32,9 +32,27 @@ async function git(cwd: string, args: string[]): Promise<string> {
  */
 async function mainCheckoutOf(worktreeRoot: string): Promise<string | undefined> {
   try {
-    const common = await git(worktreeRoot, ['rev-parse', '--git-common-dir']);
-    const root = path.dirname(path.resolve(worktreeRoot, common));
-    return root === worktreeRoot ? undefined : root;
+    // The first entry `git worktree list` prints is always the main worktree.
+    // Deriving it from --git-common-dir instead only works for a plain or
+    // linked checkout: inside a submodule the common dir is
+    // `<super>/.git/modules/<name>`, whose parent is not a working tree at all,
+    // and creating a worktree there plants a checkout inside `.git`.
+    const listed = await git(worktreeRoot, ['worktree', 'list', '--porcelain']);
+    const first = listed
+      .split('\n')
+      .find(line => line.startsWith('worktree '))
+      ?.slice('worktree '.length)
+      .trim();
+    if (!first) {
+      return undefined;
+    }
+    // Inside a submodule git names the module's git dir as the main worktree
+    // -- `<super>/.git/modules/<name>` -- which is not a working tree at all.
+    // Branching from there would plant a whole checkout inside `.git`.
+    if (path.resolve(first).split(path.sep).includes('.git')) {
+      return undefined;
+    }
+    return path.resolve(first) === path.resolve(worktreeRoot) ? undefined : first;
   } catch {
     return undefined;
   }
@@ -116,7 +134,7 @@ export async function newSession(
   }
 
   if (!scope.fresh) {
-    launch(here, agent.agent?.label ?? 'Session', command, config);
+    launch(here, agent.agent?.label ?? 'Session', command, config, false);
     await tracker.sync();
     return;
   }
@@ -170,7 +188,7 @@ export async function newSession(
     }
   );
 
-  launch(worktreePath, name, command, config);
+  launch(worktreePath, name, command, config, true);
   await tracker.sync();
 }
 
@@ -179,7 +197,8 @@ function launch(
   cwd: string,
   name: string,
   command: string | undefined,
-  config: vscode.WorkspaceConfiguration
+  config: vscode.WorkspaceConfiguration,
+  fresh: boolean
 ): void {
   const terminal = vscode.window.createTerminal({
     name,
@@ -188,7 +207,10 @@ function launch(
   });
   terminal.show();
 
-  const setup = config.get<string>('setupCommand', '').trim();
+  // Only in a worktree we just made. The setting is "run once in a new
+  // worktree"; re-running `bun install` in the checkout somebody is already
+  // working in is not what they asked for.
+  const setup = fresh ? config.get<string>('setupCommand', '').trim() : '';
   if (setup) {
     terminal.sendText(setup);
   }
@@ -213,23 +235,36 @@ export async function removeWorktree(worktreeRoot: string): Promise<boolean> {
   const [dirty, branch] = await Promise.all([
     git(worktreeRoot, ['status', '--porcelain'])
       .then(out => out.split('\n').filter(Boolean).length)
-      .catch(() => 0),
+      // A failed status is not a clean worktree. An agent that died holding
+      // index.lock leaves exactly this, and treating it as "nothing to lose"
+      // would drop the warning right when it matters most.
+      .catch(() => undefined),
     git(worktreeRoot, ['rev-parse', '--abbrev-ref', 'HEAD']).catch(() => '')
   ]);
 
-  const kept = branch
-    ? `The branch ${branch} is kept, so anything committed to it is safe.`
-    : 'The branch is kept, so anything committed to it is safe.';
-  const detail = dirty
-    ? `${dirty} ${dirty === 1 ? 'file has' : 'files have'} uncommitted changes. ` +
-      `They are not on any branch and will be lost. ${kept} ` +
-      'The terminals working here are closed.'
-    : `Nothing is uncommitted here. ${kept} The terminals working here are closed.`;
+  // `--abbrev-ref HEAD` prints the literal string HEAD when detached. Commits
+  // made there are on no branch, so removing the worktree loses them for good
+  // -- the opposite of what the usual reassurance says.
+  const detached = !branch || branch === 'HEAD';
+  const kept = detached
+    ? 'This worktree is not on a branch, so any commits made here are lost too.'
+    : `The branch ${branch} is kept, so anything committed to it is safe.`;
+
+  const detail =
+    dirty === undefined
+      ? `Could not read the status of this worktree, so there may be uncommitted ` +
+        `changes. Anything not committed will be lost. ${kept} ` +
+        'The terminals working here are closed.'
+      : dirty
+        ? `${dirty} ${dirty === 1 ? 'file has' : 'files have'} uncommitted changes. ` +
+          `They are not on any branch and will be lost. ${kept} ` +
+          'The terminals working here are closed.'
+        : `Nothing is uncommitted here. ${kept} The terminals working here are closed.`;
 
   const confirm = await vscode.window.showWarningMessage(
     `Remove the worktree at ${path.basename(worktreeRoot)}?`,
     { modal: true, detail },
-    dirty ? 'Remove and discard changes' : 'Remove'
+    dirty === 0 && !detached ? 'Remove' : 'Remove and discard changes'
   );
   if (!confirm) {
     return false;

@@ -64,7 +64,10 @@ export class SessionTracker implements vscode.Disposable {
       vscode.window.onDidOpenTerminal(() => void this.syncAll()),
       // Shell integration reports the cwd, and updates it on every `cd`.
       vscode.window.onDidChangeTerminalShellIntegration(() => void this.sync()),
-      vscode.window.onDidCloseTerminal(t => this.forget(t)),
+      vscode.window.onDidCloseTerminal(t => {
+        this.closing.delete(t);
+        this.forget(t);
+      }),
       this.git.onDidOpenRepository(() => void this.sync()),
       this.git.onDidCloseRepository(repo => {
         this.repoStateListeners.get(repo)?.dispose();
@@ -277,11 +280,24 @@ export class SessionTracker implements vscode.Disposable {
     return best;
   }
 
-  /** A linked worktree's `.git` is a file; the main checkout's is a directory. */
+  /**
+   * Whether `root` is a linked worktree.
+   *
+   * A `.git` file alone does not say so: a submodule has one too, and points at
+   * `<super>/.git/modules/<name>` where a linked worktree points at
+   * `<main>/.git/worktrees/<name>`. `git worktree remove` works on the second
+   * and not the first, so read the file rather than just stat it -- and read it
+   * rather than spawning git for every terminal.
+   */
   private async isLinkedWorktree(root: vscode.Uri): Promise<boolean> {
+    const dotGit = vscode.Uri.joinPath(root, '.git');
     try {
-      const stat = await vscode.workspace.fs.stat(vscode.Uri.joinPath(root, '.git'));
-      return stat.type === vscode.FileType.File;
+      const stat = await vscode.workspace.fs.stat(dotGit);
+      if (stat.type !== vscode.FileType.File) {
+        return false;
+      }
+      const pointer = Buffer.from(await vscode.workspace.fs.readFile(dotGit)).toString('utf8');
+      return /^gitdir:\s*.*[\\/]worktrees[\\/]/m.test(pointer);
     } catch {
       return false;
     }
@@ -341,11 +357,16 @@ export class SessionTracker implements vscode.Disposable {
   close(terminal: vscode.Terminal): void {
     this.closing.add(terminal);
     terminal.dispose();
+    // Drop the session now, but leave the terminal in `closing`. Clearing it
+    // here would undo the guard in the same breath as setting it, and the
+    // syncAll that follows would re-track a terminal VS Code is still listing
+    // -- against a directory that may no longer exist, so it resolves to the
+    // parent repo and comes back as a bogus row. `onDidCloseTerminal` clears
+    // it, once the terminal has really gone.
     this.forget(terminal);
   }
 
   private forget(terminal: vscode.Terminal): void {
-    this.closing.delete(terminal);
     void terminal.processId.then(pid => {
       if (pid) {
         forgetProcess(pid);

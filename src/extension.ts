@@ -202,7 +202,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         [
           ...COLORS.map(c => ({ label: c.label, id: c.id as string | undefined })),
           { label: 'No colour', id: undefined },
-          { label: 'Automatic', id: undefined, auto: true }
+          // Offering this with auto colours switched off would just clear the
+          // colour and leave no way back except finding the setting.
+          ...(styles.autoColorsEnabled()
+            ? [{ label: 'Automatic', description: 'let Parallelo choose', id: undefined, auto: true }]
+            : [])
         ],
         { placeHolder: 'Colour for this session' }
       );
