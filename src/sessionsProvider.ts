@@ -36,17 +36,35 @@ export class SessionsProvider implements vscode.TreeDataProvider<Session> {
       (session.repository?.state.workingTreeChanges.length ?? 0) +
       (session.repository?.state.indexChanges.length ?? 0);
 
-    item.description = [branch ?? session.label, dirty ? `${dirty} changed` : '']
+    // Appearance is keyed by the worktree, so two terminals in one worktree
+    // wear the same name and colour and read as a duplicated row. Name the
+    // terminal on both so they can be told apart -- and acted on separately.
+    const shared =
+      session.root !== undefined &&
+      this.tracker.allSessions.filter(other => other.root === session.root).length > 1;
+
+    item.description = [
+      branch ?? session.label,
+      shared ? session.terminal.name : '',
+      dirty ? `${dirty} changed` : ''
+    ]
       .filter(Boolean)
       .join(' \u00b7 ');
     item.iconPath = new vscode.ThemeIcon(
       style.icon || (active ? 'circle-filled' : 'terminal'),
       style.color ? new vscode.ThemeColor(style.color) : undefined
     );
-    item.tooltip = style.name
-      ? `${style.name}\n${session.cwd.fsPath}`
-      : session.cwd.fsPath;
-    item.contextValue = 'session';
+    item.tooltip = [
+      style.name,
+      session.cwd.fsPath,
+      shared ? `Terminal: ${session.terminal.name}` : '',
+      shared ? 'Another terminal is working in this same worktree.' : ''
+    ]
+      .filter(Boolean)
+      .join('\n');
+    // Only a linked worktree can be removed; the main checkout cannot, and
+    // offering a bin that always fails on it is worse than not offering one.
+    item.contextValue = session.linked ? 'worktreeSession' : 'session';
     item.command = {
       command: 'parallelo.focusTerminal',
       title: 'Focus Session Terminal',

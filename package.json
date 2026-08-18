@@ -101,7 +101,7 @@
       },
       {
         "command": "parallelo.removeWorktree",
-        "title": "Remove Session Worktree",
+        "title": "Delete Worktree (Discards Uncommitted Changes)",
         "category": "Parallelo Session",
         "icon": "$(trash)"
       },
@@ -133,6 +133,17 @@
         "title": "Customize Session",
         "category": "Parallelo Session",
         "icon": "$(paintcan)"
+      },
+      {
+        "command": "parallelo.closeSession",
+        "title": "Close Session (Keeps the Worktree and Changes)",
+        "category": "Parallelo Session",
+        "icon": "$(close)"
+      },
+      {
+        "command": "parallelo.showLog",
+        "title": "Show Log",
+        "category": "Parallelo Session"
       }
     ],
     "menus": {
@@ -161,33 +172,43 @@
       "view/item/context": [
         {
           "command": "parallelo.customizeSession",
-          "when": "view == worktreeSessions.sessions && viewItem == session",
+          "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]ession$/",
           "group": "inline@1"
         },
         {
           "command": "parallelo.resetSessionStyle",
-          "when": "view == worktreeSessions.sessions && viewItem == session",
+          "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]ession$/",
           "group": "1_style@3"
         },
         {
           "command": "parallelo.setSessionIcon",
-          "when": "view == worktreeSessions.sessions && viewItem == session",
+          "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]ession$/",
           "group": "1_style@2"
         },
         {
           "command": "parallelo.setSessionColor",
-          "when": "view == worktreeSessions.sessions && viewItem == session",
+          "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]ession$/",
           "group": "1_style@1"
         },
         {
           "command": "parallelo.renameSession",
-          "when": "view == worktreeSessions.sessions && viewItem == session",
+          "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]ession$/",
           "group": "1_style@0"
         },
         {
           "command": "parallelo.removeWorktree",
-          "when": "view == worktreeSessions.sessions && viewItem == session",
-          "group": "inline"
+          "when": "view == worktreeSessions.sessions && viewItem == worktreeSession",
+          "group": "inline@2"
+        },
+        {
+          "command": "parallelo.closeSession",
+          "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]ession$/",
+          "group": "2_session@1"
+        },
+        {
+          "command": "parallelo.removeWorktree",
+          "when": "view == worktreeSessions.sessions && viewItem == worktreeSession",
+          "group": "9_danger@1"
         }
       ]
     },
@@ -244,7 +265,7 @@
         "parallelo.setupCommand": {
           "type": "string",
           "default": "",
-          "description": "Command run once in a new worktree before the agent starts. Useful in a monorepo, for example: pnpm install."
+          "description": "Command run once in a new worktree before the agent starts. Useful in a monorepo, for example: bun install."
         },
         "parallelo.copyFiles": {
           "type": "array",
@@ -266,6 +287,16 @@
           "type": "boolean",
           "default": true,
           "description": "Resolve the worktree from the processes running in the terminal, not just the shell. Needed when an agent creates its own worktree and moves itself into it, leaving the shell behind. No effect on Windows."
+        },
+        "parallelo.autoSessionColors": {
+          "type": "boolean",
+          "default": true,
+          "description": "Give each session a distinct colour automatically. A colour you set yourself is never overwritten."
+        },
+        "parallelo.stashGuard": {
+          "type": "boolean",
+          "default": true,
+          "description": "Warn once per repository when the stash is used while more than one session is live. The stash is shared across every worktree, so one session can pop what another stashed."
         }
       }
     }

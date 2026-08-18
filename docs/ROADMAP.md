@@ -9,9 +9,9 @@ deliberately out of scope, and the implementation notes for each new feature.
 | | |
 |---|---|
 | Extension id | `parallelo-session` ("Parallelo Session") |
-| Built and compiling | container rename, nested-worktree resolution, process-cwd binding, all-terminal sync, session name/colour/icon |
+| Built and compiling | container rename, nested-worktree resolution, process-cwd binding, all-terminal sync, session name/colour/icon, auto-colours, stash guard |
 | **Unverified** | **per-hunk staging (see §7) — nothing below should ship before this is settled** |
-| Not yet a git repo | `git init` still pending |
+| Repo | `main` on github.com/lilyanAhmetoglu/parallelo; `feat/activity` merged as PR #1 |
 
 ---
 
@@ -187,27 +187,41 @@ tracked sessions — data we already hold, no scanning subsystem needed. Render 
 `⚠ 2 files also edited by test-b` in the row description, with the file list in
 the tooltip.
 
-### 4.4 Shared-stash guard — **S** — *cheapest trust win*
+### 4.4 Shared-stash guard — **S** — **DONE 2026-08-18** (`feat/stash-guard-auto-colours`)
 
 **Problem.** `refs/stash` lives in the common `.git` directory, so **every
 worktree pushes onto one stack**. Two agents stashing concurrently corrupt each
 other's work. Completely invisible today. (CLAUDE.md gotcha 2.)
 
 **Implementation.** Watch `refs/stash` in the common git dir. When it changes
-while more than one session is live, warn once per window:
+while more than one session is live, warn once per window.
 
-> A stash was pushed from `test-a`. Stashes are shared across all worktrees —
-> have agents commit to their branch instead.
+Shipped as `src/stashGuard.ts`, behind `parallelo.stashGuard`. Verified against
+a real repo: `refs/stash` is written to the common `.git`, never to
+`.git/worktrees/<name>/`, and a pop from one worktree does take the stash
+another worktree pushed.
+
+Attribution is only offered on a *push*. A pop deletes its own reflog entry, so
+the branch named in the last remaining line of `logs/refs/stash` belongs to
+somebody else — reading it after a pop names the wrong session. The guard
+compares reflog depth against the previous reading to tell the two apart, and
+says "applied or dropped" without a branch when the log shrank.
 
 Never add a stash *feature*. This is a warning only.
 
-### 4.5 Auto-distinct colours — **S**
+### 4.5 Auto-distinct colours — **S** — **DONE 2026-08-18** (`feat/stash-guard-auto-colours`)
 
 Manual colours exist; vibe coders will not set them. Assign each new session the
 next unused colour from `COLORS` automatically, manual override wins.
 
 *Implementation:* on first sight of a worktree in `SessionStyles`, allocate the
 lowest-index colour not currently in use.
+
+Shipped as `SessionStyles.autoAssign`, behind `parallelo.autoSessionColors`.
+`SessionStyle.autoColor` marks who chose: `true` automatic and reshufflable,
+`false` the user decided — *including* deciding on no colour, which is why the
+empty-record cleanup in `update()` keeps a record holding only `autoColor:
+false`. The colour picker grew an "Automatic" entry to hand a session back.
 
 ### 4.6 Considered and cut
 
@@ -239,14 +253,14 @@ Unchanged from CLAUDE.md, restated because every competitor drifted into them:
 | Item | State |
 |---|---|
 | `publisher` — currently `your-publisher-id` | **blocker** |
-| `repository.url` — currently `your-name/...` | **blocker** |
-| `LICENSE` file (manifest claims MIT) | missing |
-| 128×128 PNG icon | in progress |
-| `.vscodeignore` (else the vsix ships `src/` + `node_modules/`) | missing |
-| `.gitignore` | missing |
-| `CHANGELOG.md` | missing |
-| `git init` + first commit | **not done — today's work is uncommitted** |
-| `vscode:prepublish` uses npm, should use bun | to fix |
+| `repository.url` — currently `your-name/...` | done |
+| `LICENSE` file (manifest claims MIT) | done |
+| 128×128 PNG icon | done |
+| `.vscodeignore` (else the vsix ships `src/` + `node_modules/`) | done |
+| `.gitignore` | done |
+| `CHANGELOG.md` | done |
+| `git init` + first commit | done |
+| `vscode:prepublish` uses npm, should use bun | done |
 | README rewritten for the new name, with GIF | to do |
 | Publish to Open VSX (Cursor / Windsurf audience) | to do |
 | Document: shared stash, no port/`.env` isolation, macOS+Linux only process cwd | to do |
@@ -266,9 +280,18 @@ Everything built so far assumes `changesProvider.openChange` produces correct
 git URIs. §4.2 depends on it entirely. If it fails, the fix is in `openChange`,
 not in anything else built this week.
 
-Fixture is ready at `scratchpad/testrepo`: `.worktrees/test-a` (`alpha.txt`,
-lines 3 and 35) and `.worktrees/test-b` (`beta.txt`, lines 5 and 30) — two
-separate hunks each, nothing staged.
+The old fixture lived in a session scratchpad and is gone. Rebuild it with:
+
+```bash
+git init -b main testrepo && cd testrepo
+seq 1 40 > alpha.txt && seq 1 40 > beta.txt
+git add -A && git commit -m base
+git worktree add .worktrees/test-a -b session/test-a
+git worktree add .worktrees/test-b -b session/test-b
+```
+
+Then edit lines 3 and 35 of `test-a/alpha.txt` and lines 5 and 30 of
+`test-b/beta.txt` — two separate hunks each, nothing staged.
 
 ---
 
@@ -317,7 +340,8 @@ makes the panel unreadable.
 
 1. `git init`, commit everything currently on disk — **do this first, today's work is unversioned**
 2. Settle §7
-3. Branch `feat/activity` → §4.1 busy/waiting, §4.4 stash guard, §4.5 auto-colours
+3. ~~Branch `feat/activity` → §4.1 busy/waiting~~ — merged; §4.1 dropped, see above.
+   §4.4 and §4.5 landed after it on `feat/stash-guard-auto-colours`.
 4. Branch `feat/badges` → §3.1, §3.2, §3.3
 5. Branch `feat/baseline` → §4.2, then §4.3
 6. Packaging pass → §6

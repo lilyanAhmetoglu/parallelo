@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import type { API as GitAPI, Repository } from './git';
 import { processCwds, forgetProcess } from './processCwd';
+import { log } from './log';
 
 export interface Session {
   /** The terminal driving this session. */
@@ -18,6 +19,14 @@ export interface Session {
    * which is undefined for the first moments after a reload.
    */
   root?: string;
+  /**
+   * Whether `root` is a linked worktree rather than the main checkout.
+   *
+   * In a linked worktree `.git` is a file pointing at the common directory; in
+   * the main checkout it is a directory. Only a linked worktree can be removed
+   * with `git worktree remove`, so this decides whether the row offers it.
+   */
+  linked?: boolean;
   /** Git repository (worktree) containing that directory, once resolved. */
   repository?: Repository;
   /** Label shown in the Sessions view. */
@@ -36,6 +45,8 @@ function isInside(parent: string, child: string): boolean {
 export class SessionTracker implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
   private readonly sessions = new Map<vscode.Terminal, Session>();
+  /** Terminals told to close, ignored until VS Code stops listing them. */
+  private readonly closing = new Set<vscode.Terminal>();
   private readonly repoStateListeners = new Map<Repository, vscode.Disposable>();
   private current: Session | undefined;
 
@@ -53,7 +64,10 @@ export class SessionTracker implements vscode.Disposable {
       vscode.window.onDidOpenTerminal(() => void this.syncAll()),
       // Shell integration reports the cwd, and updates it on every `cd`.
       vscode.window.onDidChangeTerminalShellIntegration(() => void this.sync()),
-      vscode.window.onDidCloseTerminal(t => this.forget(t)),
+      vscode.window.onDidCloseTerminal(t => {
+        this.closing.delete(t);
+        this.forget(t);
+      }),
       this.git.onDidOpenRepository(() => void this.sync()),
       this.git.onDidCloseRepository(repo => {
         this.repoStateListeners.get(repo)?.dispose();
@@ -74,6 +88,9 @@ export class SessionTracker implements vscode.Disposable {
 
   /** Resolves one terminal into a session, without changing which is active. */
   private async track(terminal: vscode.Terminal): Promise<Session | undefined> {
+    if (this.closing.has(terminal)) {
+      return undefined;
+    }
     const located = await this.resolveCwd(terminal);
     if (!located) {
       return undefined;
@@ -85,11 +102,22 @@ export class SessionTracker implements vscode.Disposable {
       ? path.basename(repository.rootUri.fsPath)
       : path.basename((root ?? cwd).fsPath);
 
-    const session: Session = { terminal, cwd, root: root?.fsPath, repository, label };
+    const session: Session = {
+      terminal,
+      cwd,
+      root: root?.fsPath,
+      linked: root ? await this.isLinkedWorktree(root) : undefined,
+      repository,
+      label
+    };
     this.sessions.set(terminal, session);
 
     if (repository) {
       this.watchRepository(repository);
+    } else if (root) {
+      // The stash guard and the Changes view both need a repository, so a
+      // worktree git never registered is worth saying out loud.
+      log(`session: ${terminal.name} is in ${root.fsPath} but git has not registered it`);
     }
     return session;
   }
@@ -104,6 +132,10 @@ export class SessionTracker implements vscode.Disposable {
 
     const session = await this.track(terminal);
     if (!session) {
+      if (this.closing.has(terminal)) {
+        this.setCurrent(undefined);
+        return;
+      }
       // The directory has not been reported yet. Keep the last session
       // rather than blanking the views on every terminal switch.
       return;
@@ -248,6 +280,29 @@ export class SessionTracker implements vscode.Disposable {
     return best;
   }
 
+  /**
+   * Whether `root` is a linked worktree.
+   *
+   * A `.git` file alone does not say so: a submodule has one too, and points at
+   * `<super>/.git/modules/<name>` where a linked worktree points at
+   * `<main>/.git/worktrees/<name>`. `git worktree remove` works on the second
+   * and not the first, so read the file rather than just stat it -- and read it
+   * rather than spawning git for every terminal.
+   */
+  private async isLinkedWorktree(root: vscode.Uri): Promise<boolean> {
+    const dotGit = vscode.Uri.joinPath(root, '.git');
+    try {
+      const stat = await vscode.workspace.fs.stat(dotGit);
+      if (stat.type !== vscode.FileType.File) {
+        return false;
+      }
+      const pointer = Buffer.from(await vscode.workspace.fs.readFile(dotGit)).toString('utf8');
+      return /^gitdir:\s*.*[\\/]worktrees[\\/]/m.test(pointer);
+    } catch {
+      return false;
+    }
+  }
+
   /** Walks up from `start` looking for a `.git` entry (a dir, or a file in a worktree). */
   private async findGitRoot(start: vscode.Uri): Promise<vscode.Uri | undefined> {
     let dir = start;
@@ -288,6 +343,27 @@ export class SessionTracker implements vscode.Disposable {
     if (!same) {
       this._onDidChangeSession.fire(session);
     }
+  }
+
+  /**
+   * Closes a terminal and drops its session now.
+   *
+   * `dispose` is not immediate -- the terminal stays in
+   * `vscode.window.terminals` until it has actually gone, and
+   * `onDidCloseTerminal` arrives later still. Anything that re-reads the
+   * terminal list in between puts the session straight back, so drop it here
+   * rather than waiting for the event.
+   */
+  close(terminal: vscode.Terminal): void {
+    this.closing.add(terminal);
+    terminal.dispose();
+    // Drop the session now, but leave the terminal in `closing`. Clearing it
+    // here would undo the guard in the same breath as setting it, and the
+    // syncAll that follows would re-track a terminal VS Code is still listing
+    // -- against a directory that may no longer exist, so it resolves to the
+    // parent repo and comes back as a bogus row. `onDidCloseTerminal` clears
+    // it, once the terminal has really gone.
+    this.forget(terminal);
   }
 
   private forget(terminal: vscode.Terminal): void {

@@ -12,38 +12,81 @@ interface AgentChoice {
   command?: string;
 }
 
+/** git's own wording, without the command line execFile prepends to it. */
+function clean(message: string): string {
+  return message.replace(/^Command failed:.*\n?/, '').trim();
+}
+
 async function git(cwd: string, args: string[]): Promise<string> {
   const { stdout } = await run('git', args, { cwd, maxBuffer: 10 * 1024 * 1024 });
   return stdout.trim();
 }
 
-/** Picks the repository new worktrees are branched from. */
-function baseRepoRoot(gitApi: GitAPI, tracker: SessionTracker): string | undefined {
-  const active = tracker.activeSession?.repository?.rootUri.fsPath;
-  if (active) {
-    return active;
+/**
+ * The main checkout a worktree belongs to.
+ *
+ * `--git-common-dir` is the `.git` shared by every worktree of the repository,
+ * so its parent is the main working tree. Asking git beats guessing from the
+ * registered repositories: there may be only one -- the worktree itself -- and
+ * picking "some other repository" can land on an unrelated project entirely.
+ */
+async function mainCheckoutOf(worktreeRoot: string): Promise<string | undefined> {
+  try {
+    // The first entry `git worktree list` prints is always the main worktree.
+    // Deriving it from --git-common-dir instead only works for a plain or
+    // linked checkout: inside a submodule the common dir is
+    // `<super>/.git/modules/<name>`, whose parent is not a working tree at all,
+    // and creating a worktree there plants a checkout inside `.git`.
+    const listed = await git(worktreeRoot, ['worktree', 'list', '--porcelain']);
+    const first = listed
+      .split('\n')
+      .find(line => line.startsWith('worktree '))
+      ?.slice('worktree '.length)
+      .trim();
+    if (!first) {
+      return undefined;
+    }
+    // Inside a submodule git names the module's git dir as the main worktree
+    // -- `<super>/.git/modules/<name>` -- which is not a working tree at all.
+    // Branching from there would plant a whole checkout inside `.git`.
+    if (path.resolve(first).split(path.sep).includes('.git')) {
+      return undefined;
+    }
+    return path.resolve(first) === path.resolve(worktreeRoot) ? undefined : first;
+  } catch {
+    return undefined;
   }
-  return gitApi.repositories[0]?.rootUri.fsPath;
+}
+
+/**
+ * The main checkout new worktrees are branched from.
+ *
+ * Never the active session's own root. Branching from a linked worktree puts
+ * the new worktree *inside* it -- `.worktrees/a/.worktrees/b` -- where it shows
+ * up as untracked files in the session you branched from. Resolve to the main
+ * checkout however we got here.
+ */
+async function baseRepoRoot(
+  gitApi: GitAPI,
+  tracker: SessionTracker
+): Promise<string | undefined> {
+  const candidate =
+    tracker.activeSession?.root ??
+    tracker.activeSession?.repository?.rootUri.fsPath ??
+    gitApi.repositories[0]?.rootUri.fsPath;
+  if (!candidate) {
+    return undefined;
+  }
+  return (await mainCheckoutOf(candidate)) ?? candidate;
 }
 
 export async function newSession(
   gitApi: GitAPI,
   tracker: SessionTracker
 ): Promise<void> {
-  const base = baseRepoRoot(gitApi, tracker);
+  const base = await baseRepoRoot(gitApi, tracker);
   if (!base) {
     vscode.window.showErrorMessage('Open a git repository to start a session.');
-    return;
-  }
-
-  const name = await vscode.window.showInputBox({
-    title: 'Start worktree session',
-    prompt: 'Name this session. It becomes the branch and the worktree folder.',
-    placeHolder: 'checkout-refactor',
-    validateInput: value =>
-      /^[\w.\-\/]+$/.test(value) ? undefined : 'Use letters, numbers, dot, dash, underscore or slash.'
-  });
-  if (!name) {
     return;
   }
 
@@ -57,6 +100,53 @@ export async function newSession(
         )
       : { agent: agents[0] };
   if (!agent) {
+    return;
+  }
+  const command = agent.agent?.command?.trim();
+
+  // Not every session wants a worktree of its own. An agent that makes its own
+  // (`claude --worktree` and the like) needs to be started where you already
+  // are, and Parallelo binds to whatever directory it moves itself into.
+  const here = tracker.activeSession?.root ?? base;
+  const scope = await vscode.window.showQuickPick(
+    [
+      {
+        label: '$(new-folder) Worktree session',
+        description: 'isolated',
+        detail:
+          `New branch and worktree off ${path.basename(base)}, so this agent ` +
+          'cannot touch what the others are editing',
+        fresh: true
+      },
+      {
+        label: '$(folder-active) Normal session',
+        description: 'here',
+        detail:
+          `Run it in ${path.basename(here)} with no worktree. Pick this for an ` +
+          'agent that makes its own, such as claude --worktree',
+        fresh: false
+      }
+    ],
+    { title: 'What kind of session is this?' }
+  );
+  if (!scope) {
+    return;
+  }
+
+  if (!scope.fresh) {
+    launch(here, agent.agent?.label ?? 'Session', command, config, false);
+    await tracker.sync();
+    return;
+  }
+
+  const name = await vscode.window.showInputBox({
+    title: 'Start worktree session',
+    prompt: 'Name this session. It becomes the branch and the worktree folder.',
+    placeHolder: 'checkout-refactor',
+    validateInput: value =>
+      /^[\w.\-\/]+$/.test(value) ? undefined : 'Use letters, numbers, dot, dash, underscore or slash.'
+  });
+  if (!name) {
     return;
   }
 
@@ -98,51 +188,109 @@ export async function newSession(
     }
   );
 
+  launch(worktreePath, name, command, config, true);
+  await tracker.sync();
+}
+
+/** Opens the terminal for a session and starts the agent in it. */
+function launch(
+  cwd: string,
+  name: string,
+  command: string | undefined,
+  config: vscode.WorkspaceConfiguration,
+  fresh: boolean
+): void {
   const terminal = vscode.window.createTerminal({
-    name: name,
-    cwd: worktreePath,
+    name,
+    cwd,
     iconPath: new vscode.ThemeIcon('robot')
   });
   terminal.show();
 
-  const setup = config.get<string>('setupCommand', '').trim();
+  // Only in a worktree we just made. The setting is "run once in a new
+  // worktree"; re-running `bun install` in the checkout somebody is already
+  // working in is not what they asked for.
+  const setup = fresh ? config.get<string>('setupCommand', '').trim() : '';
   if (setup) {
     terminal.sendText(setup);
   }
-  const command = agent.agent?.command?.trim();
   if (command) {
     terminal.sendText(command);
   }
-
-  await tracker.sync();
 }
 
-export async function removeWorktree(
-  gitApi: GitAPI,
-  worktreeRoot: string
-): Promise<void> {
-  const base = gitApi.repositories.find(
-    r => r.rootUri.fsPath !== worktreeRoot
-  )?.rootUri.fsPath;
+export async function removeWorktree(worktreeRoot: string): Promise<boolean> {
+  const base = await mainCheckoutOf(worktreeRoot);
   if (!base) {
-    vscode.window.showErrorMessage('Could not find the main checkout for this worktree.');
-    return;
+    vscode.window.showErrorMessage(
+      `Could not find the main checkout for ${path.basename(worktreeRoot)}. ` +
+        'It may be the main checkout itself rather than a linked worktree.'
+    );
+    return false;
   }
+
+  // Say what is actually at stake. `git status --porcelain` counts staged,
+  // unstaged and untracked in one go, which is exactly the set `--force`
+  // throws away.
+  const [dirty, branch] = await Promise.all([
+    git(worktreeRoot, ['status', '--porcelain'])
+      .then(out => out.split('\n').filter(Boolean).length)
+      // A failed status is not a clean worktree. An agent that died holding
+      // index.lock leaves exactly this, and treating it as "nothing to lose"
+      // would drop the warning right when it matters most.
+      .catch(() => undefined),
+    git(worktreeRoot, ['rev-parse', '--abbrev-ref', 'HEAD']).catch(() => '')
+  ]);
+
+  // `--abbrev-ref HEAD` prints the literal string HEAD when detached. Commits
+  // made there are on no branch, so removing the worktree loses them for good
+  // -- the opposite of what the usual reassurance says.
+  const detached = !branch || branch === 'HEAD';
+  const kept = detached
+    ? 'This worktree is not on a branch, so any commits made here are lost too.'
+    : `The branch ${branch} is kept, so anything committed to it is safe.`;
+
+  const detail =
+    dirty === undefined
+      ? `Could not read the status of this worktree, so there may be uncommitted ` +
+        `changes. Anything not committed will be lost. ${kept} ` +
+        'The terminals working here are closed.'
+      : dirty
+        ? `${dirty} ${dirty === 1 ? 'file has' : 'files have'} uncommitted changes. ` +
+          `They are not on any branch and will be lost. ${kept} ` +
+          'The terminals working here are closed.'
+        : `Nothing is uncommitted here. ${kept} The terminals working here are closed.`;
 
   const confirm = await vscode.window.showWarningMessage(
     `Remove the worktree at ${path.basename(worktreeRoot)}?`,
-    { modal: true, detail: 'Uncommitted changes in this worktree will be lost. The branch is kept.' },
-    'Remove'
+    { modal: true, detail },
+    dirty === 0 && !detached ? 'Remove' : 'Remove and discard changes'
   );
-  if (confirm !== 'Remove') {
-    return;
+  if (!confirm) {
+    return false;
   }
 
   try {
     await git(base, ['worktree', 'remove', '--force', worktreeRoot]);
-    vscode.window.showInformationMessage(`Removed worktree ${path.basename(worktreeRoot)}.`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    vscode.window.showErrorMessage(`Could not remove the worktree. ${message}`);
+    // A locked worktree needs the flag twice; one --force is not enough and
+    // git says so rather than doing it.
+    if (/locked working tree/i.test(message)) {
+      try {
+        await git(base, ['worktree', 'remove', '--force', '--force', worktreeRoot]);
+      } catch (retry) {
+        const failure = retry instanceof Error ? retry.message : String(retry);
+        vscode.window.showErrorMessage(`Could not remove the worktree. ${clean(failure)}`);
+        return false;
+      }
+      vscode.window.showInformationMessage(`Removed worktree ${path.basename(worktreeRoot)}.`);
+      return true;
+    }
+    vscode.window.showErrorMessage(`Could not remove the worktree. ${clean(message)}`);
+    return false;
   }
+
+  vscode.window.showInformationMessage(`Removed worktree ${path.basename(worktreeRoot)}.`);
+  return true;
 }
