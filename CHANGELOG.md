@@ -21,6 +21,14 @@
   change stay exactly where they are. Removing the worktree is now a separate
   menu entry rather than a one-click icon next to it.
 
+### Changed
+- The remove-worktree confirmation counts what is at stake instead of warning
+  in the abstract: how many files have uncommitted changes, which branch is
+  being kept, and that the branch keeps anything committed to it. A worktree
+  with nothing uncommitted says so rather than threatening loss that cannot
+  happen, and the confirm button reads "Remove and discard changes" only when
+  there is something to discard.
+
 ### Fixed
 - Closing or removing a session actually drops its row. Closing a terminal is
   not immediate -- it stays listed until VS Code has finished with it -- so

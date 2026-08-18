@@ -19,6 +19,8 @@ process in the terminal is the only contract.**
   are actually on.
 - **Sessions** — every terminal inside a worktree, with its branch and change
   count. Click one to focus its terminal.
+- **Close Session / Remove Worktree** — close a session and keep everything, or
+  delete the worktree once you are done with it.
 - **Session appearance** — every session gets its own colour straight away, and
   you can set a name, colour and icon yourself. They stick to the worktree, so
   they survive a reload.
@@ -62,6 +64,15 @@ Parallelo watches for this and warns you once per repository per window, the
 first time the stash is touched while more than one session is live. It is a
 warning only; the extension deliberately has no stash feature. Turn it off with
 `parallelo.stashGuard`.
+
+**Removing a session worktree discards uncommitted work.** The branch is kept,
+so anything an agent committed to it is safe and you can pick it up again with a
+new worktree. Anything still sitting in the working tree is not on any branch and
+goes with the directory. The confirmation tells you how many files that is before
+you agree. Nothing is ever moved back into your main checkout -- those changes
+belong to another branch, and landing them on whichever branch you happen to be
+on is not a thing this extension will do to you. Use **Close Session** if you
+just want the row gone.
 
 **Worktrees isolate files, nothing else.** Ports, databases, running dev servers
 and `.env` state are all shared. Two agents running the same dev server will

@@ -150,17 +150,31 @@ export async function removeWorktree(worktreeRoot: string): Promise<boolean> {
     return false;
   }
 
+  // Say what is actually at stake. `git status --porcelain` counts staged,
+  // unstaged and untracked in one go, which is exactly the set `--force`
+  // throws away.
+  const [dirty, branch] = await Promise.all([
+    git(worktreeRoot, ['status', '--porcelain'])
+      .then(out => out.split('\n').filter(Boolean).length)
+      .catch(() => 0),
+    git(worktreeRoot, ['rev-parse', '--abbrev-ref', 'HEAD']).catch(() => '')
+  ]);
+
+  const kept = branch
+    ? `The branch ${branch} is kept, so anything committed to it is safe.`
+    : 'The branch is kept, so anything committed to it is safe.';
+  const detail = dirty
+    ? `${dirty} ${dirty === 1 ? 'file has' : 'files have'} uncommitted changes. ` +
+      `They are not on any branch and will be lost. ${kept} ` +
+      'The terminals working here are closed.'
+    : `Nothing is uncommitted here. ${kept} The terminals working here are closed.`;
+
   const confirm = await vscode.window.showWarningMessage(
     `Remove the worktree at ${path.basename(worktreeRoot)}?`,
-    {
-      modal: true,
-      detail:
-        'Uncommitted changes in this worktree will be lost. The branch is kept, ' +
-        'and the terminals working in it are closed.'
-    },
-    'Remove'
+    { modal: true, detail },
+    dirty ? 'Remove and discard changes' : 'Remove'
   );
-  if (confirm !== 'Remove') {
+  if (!confirm) {
     return false;
   }
 
