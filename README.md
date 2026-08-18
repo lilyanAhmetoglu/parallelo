@@ -19,11 +19,10 @@ process in the terminal is the only contract.**
   are actually on.
 - **Sessions** — every terminal inside a worktree, with its branch and change
   count. Click one to focus its terminal.
-- **Close Session** (`X`) — the session row goes, the worktree, branch and every
-  change stay. Nothing is lost, so it does not ask.
 - **Delete Worktree** (bin) — deletes the worktree directory. The branch is kept,
   uncommitted changes are not. It always asks first, and tells you how many files
-  are at stake.
+  are at stake. To make a session go away without deleting anything, close its
+  terminal.
 - **Session appearance** — every session gets its own colour straight away, and
   you can set a name, colour and icon yourself. They stick to the worktree, so
   they survive a reload.

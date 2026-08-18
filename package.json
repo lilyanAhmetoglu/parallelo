@@ -193,11 +193,6 @@
         {
           "command": "parallelo.removeWorktree",
           "when": "view == worktreeSessions.sessions && viewItem == worktreeSession",
-          "group": "inline@3"
-        },
-        {
-          "command": "parallelo.closeSession",
-          "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]ession$/",
           "group": "inline@2"
         },
         {
