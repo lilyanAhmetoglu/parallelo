@@ -117,32 +117,56 @@ export async function newSession(
   await tracker.sync();
 }
 
-export async function removeWorktree(
-  gitApi: GitAPI,
-  worktreeRoot: string
-): Promise<void> {
-  const base = gitApi.repositories.find(
-    r => r.rootUri.fsPath !== worktreeRoot
-  )?.rootUri.fsPath;
+/**
+ * The main checkout a worktree belongs to.
+ *
+ * `--git-common-dir` is the `.git` shared by every worktree of the repository,
+ * so its parent is the main working tree. Asking git beats guessing from the
+ * registered repositories: there may be only one -- the worktree itself -- and
+ * picking "some other repository" can land on an unrelated project entirely.
+ */
+async function mainCheckoutOf(worktreeRoot: string): Promise<string | undefined> {
+  try {
+    const common = await git(worktreeRoot, ['rev-parse', '--git-common-dir']);
+    const root = path.dirname(path.resolve(worktreeRoot, common));
+    return root === worktreeRoot ? undefined : root;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function removeWorktree(worktreeRoot: string): Promise<boolean> {
+  const base = await mainCheckoutOf(worktreeRoot);
   if (!base) {
-    vscode.window.showErrorMessage('Could not find the main checkout for this worktree.');
-    return;
+    vscode.window.showErrorMessage(
+      `Could not find the main checkout for ${path.basename(worktreeRoot)}. ` +
+        'It may be the main checkout itself rather than a linked worktree.'
+    );
+    return false;
   }
 
   const confirm = await vscode.window.showWarningMessage(
     `Remove the worktree at ${path.basename(worktreeRoot)}?`,
-    { modal: true, detail: 'Uncommitted changes in this worktree will be lost. The branch is kept.' },
+    {
+      modal: true,
+      detail:
+        'Uncommitted changes in this worktree will be lost. The branch is kept, ' +
+        'and the terminals working in it are closed.'
+    },
     'Remove'
   );
   if (confirm !== 'Remove') {
-    return;
+    return false;
   }
 
   try {
     await git(base, ['worktree', 'remove', '--force', worktreeRoot]);
-    vscode.window.showInformationMessage(`Removed worktree ${path.basename(worktreeRoot)}.`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    vscode.window.showErrorMessage(`Could not remove the worktree. ${message}`);
+    vscode.window.showErrorMessage(`Could not remove the worktree. ${message.trim()}`);
+    return false;
   }
+
+  vscode.window.showInformationMessage(`Removed worktree ${path.basename(worktreeRoot)}.`);
+  return true;
 }

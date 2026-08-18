@@ -17,6 +17,16 @@
   another stashed. Once per repository per window, and a warning only.
 
 ### Fixed
+- Removing a session worktree works when it is the only repository the git
+  extension knows about, and no longer runs `git worktree remove` against an
+  unrelated project that happened to be open. The main checkout is resolved
+  with `git rev-parse --git-common-dir` rather than guessed.
+- Removing a session worktree no longer refuses while git is still registering
+  the repository. It reads the worktree root found on disk, which is always
+  there, instead of the repository, which is not.
+- Removing a session worktree closes the terminals left sitting in it, so the
+  row disappears from the Sessions view instead of pointing at a directory that
+  no longer exists.
 - Session name, colour and icon no longer disappear after a window reload. They
   were keyed on the git repository, which resolves asynchronously, so they were
   written under one key and read back under another.

@@ -247,15 +247,34 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
 
     vscode.commands.registerCommand('parallelo.removeWorktree', async (session: Session) => {
-      const root = session?.repository?.rootUri.fsPath;
+      // `root` comes off the filesystem and is always there; `repository` is
+      // registered asynchronously and is undefined for the first moments after
+      // a reload. Reading only the latter refused to remove a perfectly real
+      // worktree whenever git had not caught up yet.
+      const root = session?.root ?? session?.repository?.rootUri.fsPath;
       if (!root) {
         vscode.window.showInformationMessage('This session is not in a worktree.');
         return;
       }
-      await removeWorktree(git, root);
+
+      if (!(await removeWorktree(root))) {
+        return;
+      }
+
+      // The directory is gone, so every terminal still sitting in it is
+      // pointing at nothing. Close them: that is what drops the rows from the
+      // Sessions view, which otherwise keeps showing a worktree that no longer
+      // exists.
+      for (const other of tracker.allSessions) {
+        if (other.root === root || other.repository?.rootUri.fsPath === root) {
+          other.terminal.dispose();
+        }
+      }
+
       // Appearance is keyed by worktree path, so a removed worktree would
       // otherwise leave a record behind for good.
       await styles.clear(session);
+      await tracker.syncAll();
     })
   );
 }
