@@ -167,47 +167,47 @@
       "view/item/context": [
         {
           "command": "parallelo.customizeSession",
-          "when": "view == worktreeSessions.sessions && viewItem == session",
+          "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]ession$/",
           "group": "inline@1"
         },
         {
           "command": "parallelo.resetSessionStyle",
-          "when": "view == worktreeSessions.sessions && viewItem == session",
+          "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]ession$/",
           "group": "1_style@3"
         },
         {
           "command": "parallelo.setSessionIcon",
-          "when": "view == worktreeSessions.sessions && viewItem == session",
+          "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]ession$/",
           "group": "1_style@2"
         },
         {
           "command": "parallelo.setSessionColor",
-          "when": "view == worktreeSessions.sessions && viewItem == session",
+          "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]ession$/",
           "group": "1_style@1"
         },
         {
           "command": "parallelo.renameSession",
-          "when": "view == worktreeSessions.sessions && viewItem == session",
+          "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]ession$/",
           "group": "1_style@0"
         },
         {
           "command": "parallelo.removeWorktree",
-          "when": "view == worktreeSessions.sessions && viewItem == session",
+          "when": "view == worktreeSessions.sessions && viewItem == worktreeSession",
           "group": "inline@3"
         },
         {
           "command": "parallelo.closeSession",
-          "when": "view == worktreeSessions.sessions && viewItem == session",
+          "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]ession$/",
           "group": "inline@2"
         },
         {
           "command": "parallelo.closeSession",
-          "when": "view == worktreeSessions.sessions && viewItem == session",
+          "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]ession$/",
           "group": "2_session@1"
         },
         {
           "command": "parallelo.removeWorktree",
-          "when": "view == worktreeSessions.sessions && viewItem == session",
+          "when": "view == worktreeSessions.sessions && viewItem == worktreeSession",
           "group": "9_danger@1"
         }
       ]

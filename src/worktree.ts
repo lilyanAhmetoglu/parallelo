@@ -22,33 +22,53 @@ async function git(cwd: string, args: string[]): Promise<string> {
   return stdout.trim();
 }
 
-/** Picks the repository new worktrees are branched from. */
-function baseRepoRoot(gitApi: GitAPI, tracker: SessionTracker): string | undefined {
-  const active = tracker.activeSession?.repository?.rootUri.fsPath;
-  if (active) {
-    return active;
+/**
+ * The main checkout a worktree belongs to.
+ *
+ * `--git-common-dir` is the `.git` shared by every worktree of the repository,
+ * so its parent is the main working tree. Asking git beats guessing from the
+ * registered repositories: there may be only one -- the worktree itself -- and
+ * picking "some other repository" can land on an unrelated project entirely.
+ */
+async function mainCheckoutOf(worktreeRoot: string): Promise<string | undefined> {
+  try {
+    const common = await git(worktreeRoot, ['rev-parse', '--git-common-dir']);
+    const root = path.dirname(path.resolve(worktreeRoot, common));
+    return root === worktreeRoot ? undefined : root;
+  } catch {
+    return undefined;
   }
-  return gitApi.repositories[0]?.rootUri.fsPath;
+}
+
+/**
+ * The main checkout new worktrees are branched from.
+ *
+ * Never the active session's own root. Branching from a linked worktree puts
+ * the new worktree *inside* it -- `.worktrees/a/.worktrees/b` -- where it shows
+ * up as untracked files in the session you branched from. Resolve to the main
+ * checkout however we got here.
+ */
+async function baseRepoRoot(
+  gitApi: GitAPI,
+  tracker: SessionTracker
+): Promise<string | undefined> {
+  const candidate =
+    tracker.activeSession?.root ??
+    tracker.activeSession?.repository?.rootUri.fsPath ??
+    gitApi.repositories[0]?.rootUri.fsPath;
+  if (!candidate) {
+    return undefined;
+  }
+  return (await mainCheckoutOf(candidate)) ?? candidate;
 }
 
 export async function newSession(
   gitApi: GitAPI,
   tracker: SessionTracker
 ): Promise<void> {
-  const base = baseRepoRoot(gitApi, tracker);
+  const base = await baseRepoRoot(gitApi, tracker);
   if (!base) {
     vscode.window.showErrorMessage('Open a git repository to start a session.');
-    return;
-  }
-
-  const name = await vscode.window.showInputBox({
-    title: 'Start worktree session',
-    prompt: 'Name this session. It becomes the branch and the worktree folder.',
-    placeHolder: 'checkout-refactor',
-    validateInput: value =>
-      /^[\w.\-\/]+$/.test(value) ? undefined : 'Use letters, numbers, dot, dash, underscore or slash.'
-  });
-  if (!name) {
     return;
   }
 
@@ -62,6 +82,47 @@ export async function newSession(
         )
       : { agent: agents[0] };
   if (!agent) {
+    return;
+  }
+  const command = agent.agent?.command?.trim();
+
+  // Not every session wants a worktree of its own. An agent that makes its own
+  // (`claude --worktree` and the like) needs to be started where you already
+  // are, and Parallelo binds to whatever directory it moves itself into.
+  const here = tracker.activeSession?.root ?? base;
+  const scope = await vscode.window.showQuickPick(
+    [
+      {
+        label: '$(new-folder) New worktree',
+        detail: `Branch off ${path.basename(base)} and work in a directory of its own`,
+        fresh: true
+      },
+      {
+        label: '$(folder-active) Stay in this one',
+        detail: `Run it in ${path.basename(here)}, with no new branch or worktree`,
+        fresh: false
+      }
+    ],
+    { title: 'Where should this session work?' }
+  );
+  if (!scope) {
+    return;
+  }
+
+  if (!scope.fresh) {
+    launch(here, agent.agent?.label ?? 'Session', command, config);
+    await tracker.sync();
+    return;
+  }
+
+  const name = await vscode.window.showInputBox({
+    title: 'Start worktree session',
+    prompt: 'Name this session. It becomes the branch and the worktree folder.',
+    placeHolder: 'checkout-refactor',
+    validateInput: value =>
+      /^[\w.\-\/]+$/.test(value) ? undefined : 'Use letters, numbers, dot, dash, underscore or slash.'
+  });
+  if (!name) {
     return;
   }
 
@@ -103,9 +164,20 @@ export async function newSession(
     }
   );
 
+  launch(worktreePath, name, command, config);
+  await tracker.sync();
+}
+
+/** Opens the terminal for a session and starts the agent in it. */
+function launch(
+  cwd: string,
+  name: string,
+  command: string | undefined,
+  config: vscode.WorkspaceConfiguration
+): void {
   const terminal = vscode.window.createTerminal({
-    name: name,
-    cwd: worktreePath,
+    name,
+    cwd,
     iconPath: new vscode.ThemeIcon('robot')
   });
   terminal.show();
@@ -114,29 +186,8 @@ export async function newSession(
   if (setup) {
     terminal.sendText(setup);
   }
-  const command = agent.agent?.command?.trim();
   if (command) {
     terminal.sendText(command);
-  }
-
-  await tracker.sync();
-}
-
-/**
- * The main checkout a worktree belongs to.
- *
- * `--git-common-dir` is the `.git` shared by every worktree of the repository,
- * so its parent is the main working tree. Asking git beats guessing from the
- * registered repositories: there may be only one -- the worktree itself -- and
- * picking "some other repository" can land on an unrelated project entirely.
- */
-async function mainCheckoutOf(worktreeRoot: string): Promise<string | undefined> {
-  try {
-    const common = await git(worktreeRoot, ['rev-parse', '--git-common-dir']);
-    const root = path.dirname(path.resolve(worktreeRoot, common));
-    return root === worktreeRoot ? undefined : root;
-  } catch {
-    return undefined;
   }
 }
 

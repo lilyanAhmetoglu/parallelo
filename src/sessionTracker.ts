@@ -18,6 +18,14 @@ export interface Session {
    * which is undefined for the first moments after a reload.
    */
   root?: string;
+  /**
+   * Whether `root` is a linked worktree rather than the main checkout.
+   *
+   * In a linked worktree `.git` is a file pointing at the common directory; in
+   * the main checkout it is a directory. Only a linked worktree can be removed
+   * with `git worktree remove`, so this decides whether the row offers it.
+   */
+  linked?: boolean;
   /** Git repository (worktree) containing that directory, once resolved. */
   repository?: Repository;
   /** Label shown in the Sessions view. */
@@ -90,7 +98,14 @@ export class SessionTracker implements vscode.Disposable {
       ? path.basename(repository.rootUri.fsPath)
       : path.basename((root ?? cwd).fsPath);
 
-    const session: Session = { terminal, cwd, root: root?.fsPath, repository, label };
+    const session: Session = {
+      terminal,
+      cwd,
+      root: root?.fsPath,
+      linked: root ? await this.isLinkedWorktree(root) : undefined,
+      repository,
+      label
+    };
     this.sessions.set(terminal, session);
 
     if (repository) {
@@ -255,6 +270,16 @@ export class SessionTracker implements vscode.Disposable {
       }
     }
     return best;
+  }
+
+  /** A linked worktree's `.git` is a file; the main checkout's is a directory. */
+  private async isLinkedWorktree(root: vscode.Uri): Promise<boolean> {
+    try {
+      const stat = await vscode.workspace.fs.stat(vscode.Uri.joinPath(root, '.git'));
+      return stat.type === vscode.FileType.File;
+    } catch {
+      return false;
+    }
   }
 
   /** Walks up from `start` looking for a `.git` entry (a dir, or a file in a worktree). */

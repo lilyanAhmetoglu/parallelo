@@ -21,6 +21,11 @@
   change stay exactly where they are. Removing the worktree is now a separate
   menu entry rather than a one-click icon next to it.
 
+- Starting a session asks where it should work: a new worktree, or the one you
+  are already in. An agent that makes its own worktree -- `claude --worktree`
+  and the like -- has to be started where you are, and Parallelo binds to
+  whatever directory it moves itself into.
+
 ### Changed
 - The remove-worktree confirmation counts what is at stake instead of warning
   in the abstract: how many files have uncommitted changes, which branch is
@@ -30,6 +35,12 @@
   there is something to discard.
 
 ### Fixed
+- New worktrees branch off the main checkout instead of the session you happen
+  to have focused. Branching from a linked worktree nested the new one inside
+  it, where it showed up as untracked files in the session you branched from.
+- The bin only appears on rows that are linked worktrees. It was offered on the
+  main checkout too, where `git worktree remove` cannot work, so it could only
+  ever fail there.
 - Closing or removing a session actually drops its row. Closing a terminal is
   not immediate -- it stays listed until VS Code has finished with it -- so
   re-reading the terminal list straight afterwards put the session back and the

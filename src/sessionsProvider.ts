@@ -62,7 +62,9 @@ export class SessionsProvider implements vscode.TreeDataProvider<Session> {
     ]
       .filter(Boolean)
       .join('\n');
-    item.contextValue = 'session';
+    // Only a linked worktree can be removed; the main checkout cannot, and
+    // offering a bin that always fails on it is worse than not offering one.
+    item.contextValue = session.linked ? 'worktreeSession' : 'session';
     item.command = {
       command: 'parallelo.focusTerminal',
       title: 'Focus Session Terminal',
