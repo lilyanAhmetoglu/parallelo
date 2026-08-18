@@ -36,6 +36,8 @@ function isInside(parent: string, child: string): boolean {
 export class SessionTracker implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
   private readonly sessions = new Map<vscode.Terminal, Session>();
+  /** Terminals told to close, ignored until VS Code stops listing them. */
+  private readonly closing = new Set<vscode.Terminal>();
   private readonly repoStateListeners = new Map<Repository, vscode.Disposable>();
   private current: Session | undefined;
 
@@ -74,6 +76,9 @@ export class SessionTracker implements vscode.Disposable {
 
   /** Resolves one terminal into a session, without changing which is active. */
   private async track(terminal: vscode.Terminal): Promise<Session | undefined> {
+    if (this.closing.has(terminal)) {
+      return undefined;
+    }
     const located = await this.resolveCwd(terminal);
     if (!located) {
       return undefined;
@@ -104,6 +109,10 @@ export class SessionTracker implements vscode.Disposable {
 
     const session = await this.track(terminal);
     if (!session) {
+      if (this.closing.has(terminal)) {
+        this.setCurrent(undefined);
+        return;
+      }
       // The directory has not been reported yet. Keep the last session
       // rather than blanking the views on every terminal switch.
       return;
@@ -290,7 +299,23 @@ export class SessionTracker implements vscode.Disposable {
     }
   }
 
+  /**
+   * Closes a terminal and drops its session now.
+   *
+   * `dispose` is not immediate -- the terminal stays in
+   * `vscode.window.terminals` until it has actually gone, and
+   * `onDidCloseTerminal` arrives later still. Anything that re-reads the
+   * terminal list in between puts the session straight back, so drop it here
+   * rather than waiting for the event.
+   */
+  close(terminal: vscode.Terminal): void {
+    this.closing.add(terminal);
+    terminal.dispose();
+    this.forget(terminal);
+  }
+
   private forget(terminal: vscode.Terminal): void {
+    this.closing.delete(terminal);
     void terminal.processId.then(pid => {
       if (pid) {
         forgetProcess(pid);

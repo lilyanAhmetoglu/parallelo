@@ -22,6 +22,10 @@
   menu entry rather than a one-click icon next to it.
 
 ### Fixed
+- Closing or removing a session actually drops its row. Closing a terminal is
+  not immediate -- it stays listed until VS Code has finished with it -- so
+  re-reading the terminal list straight afterwards put the session back and the
+  row never went away.
 - Two terminals in one worktree no longer read as a duplicated row. They share
   a name and colour because appearance is keyed by the worktree, so the row now
   also names its terminal when a worktree has more than one.

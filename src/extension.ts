@@ -257,15 +257,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       // Every terminal in that worktree, so a worktree with two terminals in
       // it does not leave a second row behind that looks like a duplicate.
-      for (const other of tracker.allSessions) {
-        if (other.root && other.root === target.root) {
-          other.terminal.dispose();
-        }
-      }
-      if (!target.root) {
-        target.terminal.dispose();
-      }
-      await tracker.syncAll();
+      const doomed = target.root
+        ? tracker.allSessions.filter(other => other.root === target.root)
+        : [target];
+      doomed.forEach(other => tracker.close(other.terminal));
     }),
 
     vscode.commands.registerCommand('parallelo.removeWorktree', async (session: Session) => {
@@ -287,16 +282,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       // pointing at nothing. Close them: that is what drops the rows from the
       // Sessions view, which otherwise keeps showing a worktree that no longer
       // exists.
-      for (const other of tracker.allSessions) {
-        if (other.root === root || other.repository?.rootUri.fsPath === root) {
-          other.terminal.dispose();
-        }
-      }
+      tracker.allSessions
+        .filter(other => other.root === root || other.repository?.rootUri.fsPath === root)
+        .forEach(other => tracker.close(other.terminal));
 
       // Appearance is keyed by worktree path, so a removed worktree would
       // otherwise leave a record behind for good.
       await styles.clear(session);
-      await tracker.syncAll();
     })
   );
 }
