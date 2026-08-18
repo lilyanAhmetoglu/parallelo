@@ -283,6 +283,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-name/parallelo-session"
+    "url": "https://github.com/lilyanAhmetoglu/parallelo.git"
+  },
+  "homepage": "https://github.com/lilyanAhmetoglu/parallelo#readme",
+  "bugs": {
+    "url": "https://github.com/lilyanAhmetoglu/parallelo/issues"
   }
 }
