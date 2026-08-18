@@ -108,7 +108,36 @@ reopened rather than switched to.
 Ranked by value to someone running several agents at once and not wanting to
 think about git.
 
-### 4.1 Busy / waiting indicator — **M** — *build this first*
+### 4.1 Busy / waiting indicator — **ATTEMPTED, DROPPED 2026-08-18**
+
+Built and removed. Do not rebuild it without a new signal.
+
+The plan was to read CPU from the terminal's process tree and mark sessions
+that had gone quiet. It works, in the sense that it correctly separates a busy
+agent from an idle one -- measured at roughly 2% CPU against 0.5%. The problem
+is that this is not the question worth answering.
+
+**An agent that asked you a question and an agent that finished its turn are
+indistinguishable from outside the process.** Both sit alive, holding the
+terminal foreground, using almost no CPU. So the dot appeared on every idle
+agent and told you nothing you could act on.
+
+Signals checked and ruled out on macOS:
+- `ps wchan` is empty; Linux exposes a wait channel that would separate
+  blocked-on-tty from blocked-on-network, macOS does not
+- `ps stat` reads `S+` for both busy and idle agents
+- no terminal-bell event in the stable extension API
+- shell integration's execution events fire when a *command* ends, which for a
+  long-lived interactive agent is never
+
+Reading the agent's output or its private session state would answer it, and
+that is the Claude-only trade this project refuses. Revisit only if VS Code
+exposes a terminal-bell or an idle-input event.
+
+What survived: the process-snapshot hardening in `src/processCwd.ts`, and the
+session-key fix in `src/sessionStyles.ts`.
+
+### 4.1b Original plan, for reference — *superseded*
 
 **Problem.** Four agents running. Which is still working, and which has been
 waiting on a question for six minutes? Today you click all four to find out.
