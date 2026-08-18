@@ -1,0 +1,15 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "/private/tmp/claude-501/-Users-lily-Desktop-projects-parallelo/f41dfa44-ed29-49f3-88cd-d07262364122/scratchpad/testrepo"
+      ],
+      "outFiles": ["${workspaceFolder}/out/**/*.js"]
+    }
+  ]
+}

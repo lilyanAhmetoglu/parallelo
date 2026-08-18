@@ -1,0 +1,288 @@
+{
+  "name": "parallelo-session",
+  "displayName": "Parallelo Session",
+  "description": "Binds the active terminal to its git worktree. Switch terminals, and the changes and files views follow.",
+  "version": "0.1.0",
+  "publisher": "your-publisher-id",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.93.0"
+  },
+  "categories": [
+    "SCM Providers",
+    "Other"
+  ],
+  "keywords": [
+    "worktree",
+    "git",
+    "agent",
+    "claude code",
+    "codex",
+    "parallel"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "worktreeSessions",
+          "title": "Agent Sessions",
+          "icon": "resources/sessions.svg"
+        }
+      ]
+    },
+    "views": {
+      "worktreeSessions": [
+        {
+          "id": "worktreeSessions.sessions",
+          "name": "Sessions",
+          "icon": "resources/sessions.svg"
+        },
+        {
+          "id": "worktreeSessions.changes",
+          "name": "Changes",
+          "icon": "resources/sessions.svg"
+        },
+        {
+          "id": "worktreeSessions.files",
+          "name": "Files",
+          "icon": "resources/sessions.svg",
+          "visibility": "collapsed"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "worktreeSessions.changes",
+        "contents": "Open a terminal inside a git worktree to see its changes here.\n\n[Start a worktree session](command:agentSessions.newSession)"
+      },
+      {
+        "view": "worktreeSessions.sessions",
+        "contents": "No terminals are running in a git worktree yet.\n\n[Start a worktree session](command:agentSessions.newSession)"
+      }
+    ],
+    "commands": [
+      {
+        "command": "agentSessions.newSession",
+        "title": "Start Worktree Session",
+        "category": "Agent Sessions",
+        "icon": "$(add)"
+      },
+      {
+        "command": "agentSessions.refresh",
+        "title": "Refresh",
+        "category": "Agent Sessions",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "agentSessions.focusTerminal",
+        "title": "Focus Session Terminal",
+        "category": "Agent Sessions"
+      },
+      {
+        "command": "agentSessions.openChange",
+        "title": "Open Change",
+        "category": "Agent Sessions"
+      },
+      {
+        "command": "agentSessions.stageAll",
+        "title": "Stage All Changes in Session",
+        "category": "Agent Sessions",
+        "icon": "$(add)"
+      },
+      {
+        "command": "agentSessions.revealInScm",
+        "title": "Reveal Session in Source Control",
+        "category": "Agent Sessions",
+        "icon": "$(source-control)"
+      },
+      {
+        "command": "agentSessions.removeWorktree",
+        "title": "Remove Session Worktree",
+        "category": "Agent Sessions",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "agentSessions.renameSession",
+        "title": "Rename Session",
+        "category": "Agent Sessions",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "agentSessions.setSessionColor",
+        "title": "Set Session Color",
+        "category": "Agent Sessions",
+        "icon": "$(symbol-color)"
+      },
+      {
+        "command": "agentSessions.setSessionIcon",
+        "title": "Set Session Icon",
+        "category": "Agent Sessions",
+        "icon": "$(symbol-event)"
+      },
+      {
+        "command": "agentSessions.resetSessionStyle",
+        "title": "Reset Session Appearance",
+        "category": "Agent Sessions"
+      },
+      {
+        "command": "agentSessions.customizeSession",
+        "title": "Customize Session",
+        "category": "Agent Sessions",
+        "icon": "$(paintcan)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "agentSessions.newSession",
+          "when": "view == worktreeSessions.sessions",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentSessions.refresh",
+          "when": "view =~ /^worktreeSessions\\./",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentSessions.stageAll",
+          "when": "view == worktreeSessions.changes",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentSessions.revealInScm",
+          "when": "view == worktreeSessions.changes",
+          "group": "navigation@3"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "agentSessions.customizeSession",
+          "when": "view == worktreeSessions.sessions && viewItem == session",
+          "group": "inline@1"
+        },
+        {
+          "command": "agentSessions.resetSessionStyle",
+          "when": "view == worktreeSessions.sessions && viewItem == session",
+          "group": "1_style@3"
+        },
+        {
+          "command": "agentSessions.setSessionIcon",
+          "when": "view == worktreeSessions.sessions && viewItem == session",
+          "group": "1_style@2"
+        },
+        {
+          "command": "agentSessions.setSessionColor",
+          "when": "view == worktreeSessions.sessions && viewItem == session",
+          "group": "1_style@1"
+        },
+        {
+          "command": "agentSessions.renameSession",
+          "when": "view == worktreeSessions.sessions && viewItem == session",
+          "group": "1_style@0"
+        },
+        {
+          "command": "agentSessions.removeWorktree",
+          "when": "view == worktreeSessions.sessions && viewItem == session",
+          "group": "inline"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Agent Sessions",
+      "properties": {
+        "agentSessions.agents": {
+          "type": "array",
+          "default": [
+            {
+              "label": "Claude Code",
+              "command": "claude"
+            },
+            {
+              "label": "Codex",
+              "command": "codex"
+            },
+            {
+              "label": "Shell only",
+              "command": ""
+            }
+          ],
+          "description": "Agents offered when starting a worktree session. An empty command opens the terminal without launching anything.",
+          "items": {
+            "type": "object",
+            "required": [
+              "label"
+            ],
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "command": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "agentSessions.worktreePath": {
+          "type": "string",
+          "default": ".worktrees",
+          "description": "Directory for new worktrees, relative to the repository root."
+        },
+        "agentSessions.branchPrefix": {
+          "type": "string",
+          "default": "session/",
+          "description": "Prefix applied to branches created for new sessions."
+        },
+        "agentSessions.autoOpenRepository": {
+          "type": "boolean",
+          "default": true,
+          "description": "Register a worktree with the git extension when a terminal enters it, so its changes appear without adding the folder to the workspace."
+        },
+        "agentSessions.setupCommand": {
+          "type": "string",
+          "default": "",
+          "description": "Command run once in a new worktree before the agent starts. Useful in a monorepo, for example: pnpm install."
+        },
+        "agentSessions.copyFiles": {
+          "type": "array",
+          "default": [
+            ".env",
+            ".env.local"
+          ],
+          "description": "Untracked files copied from the main checkout into each new worktree.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "agentSessions.showStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the active session's branch and change count in the status bar."
+        },
+        "agentSessions.followProcessCwd": {
+          "type": "boolean",
+          "default": true,
+          "description": "Resolve the worktree from the processes running in the terminal, not just the shell. Needed when an agent creates its own worktree and moves itself into it, leaving the shell behind. No effect on Windows."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "bun run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@types/vscode": "^1.93.0",
+    "typescript": "^5.6.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-name/parallelo-session"
+  }
+}
