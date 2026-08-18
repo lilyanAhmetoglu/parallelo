@@ -48,8 +48,16 @@ export class SessionStyles implements vscode.Disposable {
 
   constructor(private readonly memento: vscode.Memento) {}
 
+  /**
+   * Identity for a session's saved appearance.
+   *
+   * Keys on the worktree root found on disk, never on `repository`. The git
+   * extension registers repositories asynchronously, so keying on it meant the
+   * key silently changed between "not resolved yet" and "resolved" -- styles
+   * were written under one key and read back under another after every reload.
+   */
   keyFor(session: Session): string {
-    return session.repository?.rootUri.fsPath ?? session.cwd.fsPath;
+    return session.root ?? session.cwd.fsPath;
   }
 
   private all(): Record<string, SessionStyle> {
