@@ -133,6 +133,12 @@
         "title": "Customize Session",
         "category": "Parallelo Session",
         "icon": "$(paintcan)"
+      },
+      {
+        "command": "parallelo.closeSession",
+        "title": "Close Session",
+        "category": "Parallelo Session",
+        "icon": "$(close)"
       }
     ],
     "menus": {
@@ -187,7 +193,17 @@
         {
           "command": "parallelo.removeWorktree",
           "when": "view == worktreeSessions.sessions && viewItem == session",
-          "group": "inline"
+          "group": "9_danger@1"
+        },
+        {
+          "command": "parallelo.closeSession",
+          "when": "view == worktreeSessions.sessions && viewItem == session",
+          "group": "inline@2"
+        },
+        {
+          "command": "parallelo.closeSession",
+          "when": "view == worktreeSessions.sessions && viewItem == session",
+          "group": "2_session@1"
         }
       ]
     },

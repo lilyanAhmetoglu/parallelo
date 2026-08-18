@@ -246,6 +246,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     }),
 
+    // Closing the terminal is the non-destructive way to make a session go
+    // away: the worktree, the branch and every uncommitted change stay put.
+    // Without this the only action on a row was the one that deletes the lot.
+    vscode.commands.registerCommand('parallelo.closeSession', async (session?: Session) => {
+      const target = session ?? tracker.activeSession;
+      if (!target) {
+        vscode.window.showInformationMessage('No session is active.');
+        return;
+      }
+      // Every terminal in that worktree, so a worktree with two terminals in
+      // it does not leave a second row behind that looks like a duplicate.
+      for (const other of tracker.allSessions) {
+        if (other.root && other.root === target.root) {
+          other.terminal.dispose();
+        }
+      }
+      if (!target.root) {
+        target.terminal.dispose();
+      }
+      await tracker.syncAll();
+    }),
+
     vscode.commands.registerCommand('parallelo.removeWorktree', async (session: Session) => {
       // `root` comes off the filesystem and is always there; `repository` is
       // registered asynchronously and is undefined for the first moments after

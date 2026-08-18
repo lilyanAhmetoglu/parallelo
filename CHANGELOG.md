@@ -16,7 +16,17 @@
   is shared by every worktree of a repository, so one session can pop what
   another stashed. Once per repository per window, and a warning only.
 
+- **Close Session** on a session row. It closes the terminals working in that
+  worktree and nothing else: the worktree, the branch and every uncommitted
+  change stay exactly where they are. Removing the worktree is now a separate
+  menu entry rather than a one-click icon next to it.
+
 ### Fixed
+- Two terminals in one worktree no longer read as a duplicated row. They share
+  a name and colour because appearance is keyed by the worktree, so the row now
+  also names its terminal when a worktree has more than one.
+- Removing a locked worktree retries with `--force --force`, which is what git
+  asks for and what a single `--force` will not do.
 - Removing a session worktree works when it is the only repository the git
   extension knows about, and no longer runs `git worktree remove` against an
   unrelated project that happened to be open. The main checkout is resolved

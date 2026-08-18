@@ -12,6 +12,11 @@ interface AgentChoice {
   command?: string;
 }
 
+/** git's own wording, without the command line execFile prepends to it. */
+function clean(message: string): string {
+  return message.replace(/^Command failed:.*\n?/, '').trim();
+}
+
 async function git(cwd: string, args: string[]): Promise<string> {
   const { stdout } = await run('git', args, { cwd, maxBuffer: 10 * 1024 * 1024 });
   return stdout.trim();
@@ -163,7 +168,20 @@ export async function removeWorktree(worktreeRoot: string): Promise<boolean> {
     await git(base, ['worktree', 'remove', '--force', worktreeRoot]);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    vscode.window.showErrorMessage(`Could not remove the worktree. ${message.trim()}`);
+    // A locked worktree needs the flag twice; one --force is not enough and
+    // git says so rather than doing it.
+    if (/locked working tree/i.test(message)) {
+      try {
+        await git(base, ['worktree', 'remove', '--force', '--force', worktreeRoot]);
+      } catch (retry) {
+        const failure = retry instanceof Error ? retry.message : String(retry);
+        vscode.window.showErrorMessage(`Could not remove the worktree. ${clean(failure)}`);
+        return false;
+      }
+      vscode.window.showInformationMessage(`Removed worktree ${path.basename(worktreeRoot)}.`);
+      return true;
+    }
+    vscode.window.showErrorMessage(`Could not remove the worktree. ${clean(message)}`);
     return false;
   }
 
