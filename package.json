@@ -139,6 +139,11 @@
         "title": "Close Session (Keeps the Worktree and Changes)",
         "category": "Parallelo Session",
         "icon": "$(close)"
+      },
+      {
+        "command": "parallelo.showLog",
+        "title": "Show Log",
+        "category": "Parallelo Session"
       }
     ],
     "menus": {

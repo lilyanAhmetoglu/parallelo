@@ -3,6 +3,7 @@ import * as path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import type { SessionTracker } from './sessionTracker';
+import { log } from './log';
 
 const run = promisify(execFile);
 
@@ -40,6 +41,8 @@ export class StashGuard implements vscode.Disposable {
   /** Reflog length when we last looked, so a push reads differently to a pop. */
   private readonly depth = new Map<string, number>();
   private checking = false;
+  /** An event that arrived mid-check, so the check runs again rather than losing it. */
+  private again = false;
 
   constructor(private readonly tracker: SessionTracker) {
     this.disposables.push(
@@ -64,7 +67,14 @@ export class StashGuard implements vscode.Disposable {
 
   /** Re-reads every stash stack that has a session on it. */
   private async check(): Promise<void> {
-    if (this.checking || !this.enabled()) {
+    if (!this.enabled()) {
+      return;
+    }
+    if (this.checking) {
+      // Dropping this would lose the stash entirely: git settles after a push
+      // and may fire nothing else, so there would be no later event to notice
+      // it on. Remember to go round again instead.
+      this.again = true;
       return;
     }
     this.checking = true;
@@ -85,12 +95,23 @@ export class StashGuard implements vscode.Disposable {
         }
       }
 
+      if (!worktrees.size) {
+        log(
+          `stash: no repository resolved yet (${this.tracker.allSessions.length} session(s), ` +
+            `${roots.size} with a repository)`
+        );
+      }
       for (const [common, sharing] of worktrees) {
         this.watch(common);
         await this.inspect(common, sharing);
       }
     } finally {
       this.checking = false;
+    }
+
+    if (this.again) {
+      this.again = false;
+      await this.check();
     }
   }
 
@@ -161,10 +182,21 @@ export class StashGuard implements vscode.Disposable {
 
     // First look at this repository: nothing to compare against yet, and a
     // stash that was already sitting there is not news.
-    if (before === undefined || entries.length === before) {
+    if (before === undefined) {
+      log(`stash: watching ${common}, ${entries.length} on the stack, ${sharing} worktree(s)`);
       return;
     }
-    if (this.warned.has(common) || sharing < 2) {
+    if (entries.length === before) {
+      return;
+    }
+
+    log(`stash: stack went ${before} -> ${entries.length}, ${sharing} worktree(s) with a session`);
+    if (this.warned.has(common)) {
+      log('stash: already warned about this repository in this window');
+      return;
+    }
+    if (sharing < 2) {
+      log('stash: only one worktree has a session, so nothing can collide -- staying quiet');
       return;
     }
 

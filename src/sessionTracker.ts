@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import type { API as GitAPI, Repository } from './git';
 import { processCwds, forgetProcess } from './processCwd';
+import { log } from './log';
 
 export interface Session {
   /** The terminal driving this session. */
@@ -110,6 +111,10 @@ export class SessionTracker implements vscode.Disposable {
 
     if (repository) {
       this.watchRepository(repository);
+    } else if (root) {
+      // The stash guard and the Changes view both need a repository, so a
+      // worktree git never registered is worth saying out loud.
+      log(`session: ${terminal.name} is in ${root.fsPath} but git has not registered it`);
     }
     return session;
   }

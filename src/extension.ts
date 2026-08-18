@@ -8,6 +8,7 @@ import { newSession, removeWorktree } from './worktree';
 import type { Session } from './sessionTracker';
 import { SessionStyles, COLORS, ICONS } from './sessionStyles';
 import { StashGuard } from './stashGuard';
+import { showLog, disposeLog } from './log';
 
 async function getGitApi(): Promise<GitAPI | undefined> {
   const extension = vscode.extensions.getExtension<GitExtension>('vscode.git');
@@ -88,6 +89,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         void styles.syncAutoColors(tracker.allSessions);
       }
     }),
+
+    vscode.commands.registerCommand('parallelo.showLog', () => showLog()),
+    new vscode.Disposable(() => disposeLog()),
 
     vscode.commands.registerCommand('parallelo.refresh', async () => {
       await tracker.syncAll();
