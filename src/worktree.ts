@@ -93,17 +93,23 @@ export async function newSession(
   const scope = await vscode.window.showQuickPick(
     [
       {
-        label: '$(new-folder) New worktree',
-        detail: `Branch off ${path.basename(base)} and work in a directory of its own`,
+        label: '$(new-folder) Worktree session',
+        description: 'isolated',
+        detail:
+          `New branch and worktree off ${path.basename(base)}, so this agent ` +
+          'cannot touch what the others are editing',
         fresh: true
       },
       {
-        label: '$(folder-active) Stay in this one',
-        detail: `Run it in ${path.basename(here)}, with no new branch or worktree`,
+        label: '$(folder-active) Normal session',
+        description: 'here',
+        detail:
+          `Run it in ${path.basename(here)} with no worktree. Pick this for an ` +
+          'agent that makes its own, such as claude --worktree',
         fresh: false
       }
     ],
-    { title: 'Where should this session work?' }
+    { title: 'What kind of session is this?' }
   );
   if (!scope) {
     return;

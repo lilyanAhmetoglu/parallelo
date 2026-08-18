@@ -21,8 +21,9 @@
   change stay exactly where they are. Removing the worktree is now a separate
   menu entry rather than a one-click icon next to it.
 
-- Starting a session asks where it should work: a new worktree, or the one you
-  are already in. An agent that makes its own worktree -- `claude --worktree`
+- Starting a session asks what kind it is: a **worktree session** with a branch
+  and worktree of its own, or a **normal session** that runs where you already
+  are. An agent that makes its own worktree -- `claude --worktree`
   and the like -- has to be started where you are, and Parallelo binds to
   whatever directory it moves itself into.
 

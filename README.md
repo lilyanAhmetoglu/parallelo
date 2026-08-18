@@ -25,8 +25,11 @@ process in the terminal is the only contract.**
   you can set a name, colour and icon yourself. They stick to the worktree, so
   they survive a reload.
 - **Status bar** — the active session's branch and how many files it has touched.
-- **Start Worktree Session** — creates the branch and worktree, copies your
-  untracked config across, runs a setup command, and launches the agent you pick.
+- **Start Session** — pick the agent, then say what kind of session it is. A
+  **worktree session** creates the branch and worktree, copies your untracked
+  config across, runs a setup command and launches the agent in it. A **normal
+  session** launches the agent where you already are, which is what you want for
+  an agent that makes its own worktree.
 
 ## Agents that make their own worktree
 
@@ -38,6 +41,14 @@ Parallelo reads the working directory of the terminal's **process tree**, not
 just the shell, so those sessions bind to the right worktree anyway. Turn it off
 with `parallelo.followProcessCwd` if you would rather it did not inspect
 processes.
+
+Start these as a **normal session**, not a worktree session — the agent makes
+the worktree, so there is no point making one first. To have it offered as its
+own entry, add it to `parallelo.agents`:
+
+```json
+{ "label": "Claude Code (own worktree)", "command": "claude --worktree" }
+```
 
 Requires macOS or Linux. On Windows it falls back to shell integration, which
 means `cd`-then-run works and self-chdir'ing agents do not.
