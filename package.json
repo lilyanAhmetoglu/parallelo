@@ -30,7 +30,7 @@
         {
           "id": "worktreeSessions",
           "title": "Parallelo Session",
-          "icon": "resources/sessions.svg"
+          "icon": "resources/parallelo.svg"
         }
       ]
     },
@@ -39,17 +39,17 @@
         {
           "id": "worktreeSessions.sessions",
           "name": "Sessions",
-          "icon": "resources/sessions.svg"
+          "icon": "resources/parallelo.svg"
         },
         {
           "id": "worktreeSessions.changes",
           "name": "Changes",
-          "icon": "resources/sessions.svg"
+          "icon": "resources/parallelo.svg"
         },
         {
           "id": "worktreeSessions.files",
           "name": "Files",
-          "icon": "resources/sessions.svg",
+          "icon": "resources/parallelo.svg",
           "visibility": "collapsed"
         }
       ]

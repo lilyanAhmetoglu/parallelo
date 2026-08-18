@@ -8,6 +8,16 @@ export interface Session {
   terminal: vscode.Terminal;
   /** Working directory the terminal is currently in. */
   cwd: vscode.Uri;
+  /**
+   * Worktree root containing `cwd`, found by walking up for `.git`.
+   *
+   * Deliberately independent of `repository`: it resolves from the filesystem
+   * immediately, whereas the git extension registers a repository
+   * asynchronously. Anything that needs a stable identity for this session --
+   * persisted settings, for one -- must key on this, not on `repository`,
+   * which is undefined for the first moments after a reload.
+   */
+  root?: string;
   /** Git repository (worktree) containing that directory, once resolved. */
   repository?: Repository;
   /** Label shown in the Sessions view. */
@@ -64,17 +74,18 @@ export class SessionTracker implements vscode.Disposable {
 
   /** Resolves one terminal into a session, without changing which is active. */
   private async track(terminal: vscode.Terminal): Promise<Session | undefined> {
-    const cwd = await this.resolveCwd(terminal);
-    if (!cwd) {
+    const located = await this.resolveCwd(terminal);
+    if (!located) {
       return undefined;
     }
+    const { cwd, root } = located;
 
-    const repository = await this.resolveRepository(cwd);
+    const repository = await this.resolveRepository(cwd, root);
     const label = repository
       ? path.basename(repository.rootUri.fsPath)
-      : path.basename(cwd.fsPath);
+      : path.basename((root ?? cwd).fsPath);
 
-    const session: Session = { terminal, cwd, repository, label };
+    const session: Session = { terminal, cwd, root: root?.fsPath, repository, label };
     this.sessions.set(terminal, session);
 
     if (repository) {
@@ -125,7 +136,9 @@ export class SessionTracker implements vscode.Disposable {
    * let the deepest git root win, which covers both without caring what is
    * running in the terminal.
    */
-  private async resolveCwd(terminal: vscode.Terminal): Promise<vscode.Uri | undefined> {
+  private async resolveCwd(
+    terminal: vscode.Terminal
+  ): Promise<{ cwd: vscode.Uri; root: vscode.Uri | undefined } | undefined> {
     const candidates: string[] = [];
 
     const fromShell = terminal.shellIntegration?.cwd;
@@ -161,25 +174,29 @@ export class SessionTracker implements vscode.Disposable {
    * most deeply nested git worktree. A shell in the main checkout with an
    * agent running in `.worktrees/foo` resolves to the worktree, not the parent.
    */
-  private async deepestWorktree(candidates: string[]): Promise<vscode.Uri | undefined> {
-    let best: { cwd: string; rootLength: number } | undefined;
+  private async deepestWorktree(
+    candidates: string[]
+  ): Promise<{ cwd: vscode.Uri; root: vscode.Uri | undefined } | undefined> {
+    let best: { cwd: string; root: vscode.Uri } | undefined;
 
     for (const cwd of [...new Set(candidates)]) {
       const root = await this.findGitRoot(vscode.Uri.file(cwd));
       if (!root) {
         continue;
       }
-      if (!best || root.fsPath.length > best.rootLength) {
-        best = { cwd, rootLength: root.fsPath.length };
+      if (!best || root.fsPath.length > best.root.fsPath.length) {
+        best = { cwd, root };
       }
     }
 
     if (best) {
-      return vscode.Uri.file(best.cwd);
+      return { cwd: vscode.Uri.file(best.cwd), root: best.root };
     }
     // Nothing was in a repository. Keep the shell's own directory so the
     // session still shows up, just without git state.
-    return candidates.length ? vscode.Uri.file(candidates[0]) : undefined;
+    return candidates.length
+      ? { cwd: vscode.Uri.file(candidates[0]), root: undefined }
+      : undefined;
   }
 
   /**
@@ -191,9 +208,10 @@ export class SessionTracker implements vscode.Disposable {
    * directories, so those worktrees stay unregistered until we register them
    * here -- which is why this runs before any containment matching.
    */
-  private async resolveRepository(cwd: vscode.Uri): Promise<Repository | undefined> {
-    const root = await this.findGitRoot(cwd);
-
+  private async resolveRepository(
+    cwd: vscode.Uri,
+    root: vscode.Uri | undefined
+  ): Promise<Repository | undefined> {
     if (root) {
       const exact = this.git.repositories.find(
         repo => repo.rootUri.fsPath === root.fsPath
