@@ -7,6 +7,7 @@ import { SessionsProvider } from './sessionsProvider';
 import { newSession, removeWorktree } from './worktree';
 import type { Session } from './sessionTracker';
 import { SessionStyles, COLORS, ICONS } from './sessionStyles';
+import { StashGuard } from './stashGuard';
 
 async function getGitApi(): Promise<GitAPI | undefined> {
   const extension = vscode.extensions.getExtension<GitExtension>('vscode.git');
@@ -31,6 +32,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const changes = new ChangesProvider(tracker, git, styles);
   const files = new FilesProvider(tracker);
   const sessions = new SessionsProvider(tracker, styles);
+  const stashGuard = new StashGuard(tracker);
 
   const changesView = vscode.window.createTreeView('worktreeSessions.changes', {
     treeDataProvider: changes,
@@ -68,16 +70,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   };
 
   paint(tracker.activeSession);
+  void styles.prune().then(() => styles.autoAssign(tracker.allSessions));
 
   context.subscriptions.push(
     tracker,
+    stashGuard,
     changesView,
     filesView,
     sessionsView,
     status,
     styles,
     tracker.onDidChangeSession(paint),
+    tracker.onDidChangeSessions(() => void styles.autoAssign(tracker.allSessions)),
     styles.onDidChange(() => paint(tracker.activeSession)),
+    vscode.workspace.onDidChangeConfiguration(event => {
+      if (event.affectsConfiguration('parallelo.autoSessionColors')) {
+        void styles.syncAutoColors(tracker.allSessions);
+      }
+    }),
 
     vscode.commands.registerCommand('parallelo.refresh', async () => {
       await tracker.syncAll();
@@ -138,7 +148,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           },
           {
             label: '$(symbol-color) Color',
-            description: style.color ? style.color.replace('terminal.ansi', '') : 'none',
+            description: style.color
+              ? `${style.color.replace('terminal.ansi', '')}${style.autoColor ? ' (automatic)' : ''}`
+              : 'none',
             command: 'parallelo.setSessionColor'
           },
           {
@@ -185,14 +197,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const picked = await vscode.window.showQuickPick(
         [
           ...COLORS.map(c => ({ label: c.label, id: c.id as string | undefined })),
-          { label: 'No colour', id: undefined }
+          { label: 'No colour', id: undefined },
+          { label: 'Automatic', id: undefined, auto: true }
         ],
         { placeHolder: 'Colour for this session' }
       );
       if (!picked) {
         return;
       }
-      await styles.update(target, { color: picked.id });
+      // Choosing a colour, or choosing none, is a decision autoAssign has to
+      // leave alone. Only "Automatic" hands the session back to it.
+      await styles.update(target, {
+        color: picked.id,
+        autoColor: 'auto' in picked ? undefined : false
+      });
+      // Always re-run: picking Automatic needs a colour handing out, and
+      // picking a concrete one may have taken it off a session that held it
+      // automatically. Either way, waiting for the next session change would
+      // leave two rows the same colour in the meantime.
+      await styles.autoAssign(tracker.allSessions);
     }),
 
     vscode.commands.registerCommand('parallelo.setSessionIcon', async (session?: Session) => {
@@ -218,16 +241,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const target = session ?? tracker.activeSession;
       if (target) {
         await styles.clear(target);
+        // Reset means back to automatic, so hand out a colour again now.
+        await styles.autoAssign(tracker.allSessions);
       }
     }),
 
-    vscode.commands.registerCommand('parallelo.removeWorktree', (session: Session) => {
+    vscode.commands.registerCommand('parallelo.removeWorktree', async (session: Session) => {
       const root = session?.repository?.rootUri.fsPath;
       if (!root) {
         vscode.window.showInformationMessage('This session is not in a worktree.');
         return;
       }
-      return removeWorktree(git, root);
+      await removeWorktree(git, root);
+      // Appearance is keyed by worktree path, so a removed worktree would
+      // otherwise leave a record behind for good.
+      await styles.clear(session);
     })
   );
 }

@@ -244,7 +244,7 @@
         "parallelo.setupCommand": {
           "type": "string",
           "default": "",
-          "description": "Command run once in a new worktree before the agent starts. Useful in a monorepo, for example: pnpm install."
+          "description": "Command run once in a new worktree before the agent starts. Useful in a monorepo, for example: bun install."
         },
         "parallelo.copyFiles": {
           "type": "array",
@@ -266,6 +266,16 @@
           "type": "boolean",
           "default": true,
           "description": "Resolve the worktree from the processes running in the terminal, not just the shell. Needed when an agent creates its own worktree and moves itself into it, leaving the shell behind. No effect on Windows."
+        },
+        "parallelo.autoSessionColors": {
+          "type": "boolean",
+          "default": true,
+          "description": "Give each session a distinct colour automatically. A colour you set yourself is never overwritten."
+        },
+        "parallelo.stashGuard": {
+          "type": "boolean",
+          "default": true,
+          "description": "Warn once per repository when the stash is used while more than one session is live. The stash is shared across every worktree, so one session can pop what another stashed."
         }
       }
     }

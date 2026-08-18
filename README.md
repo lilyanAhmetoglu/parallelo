@@ -19,8 +19,9 @@ process in the terminal is the only contract.**
   are actually on.
 - **Sessions** — every terminal inside a worktree, with its branch and change
   count. Click one to focus its terminal.
-- **Session appearance** — give each session a name, colour and icon. They stick
-  to the worktree, so they survive a reload.
+- **Session appearance** — every session gets its own colour straight away, and
+  you can set a name, colour and icon yourself. They stick to the worktree, so
+  they survive a reload.
 - **Status bar** — the active session's branch and how many files it has touched.
 - **Start Worktree Session** — creates the branch and worktree, copies your
   untracked config across, runs a setup command, and launches the agent you pick.
@@ -53,8 +54,14 @@ reloads after a rebuild.
 
 **`git stash` is shared across all worktrees.** `refs/stash` lives in the common
 `.git` directory, so every worktree pushes onto the same stack. If two agents
-stash and pop concurrently they will corrupt each other's work. Have agents
-commit to their session branch instead.
+stash and pop concurrently they will corrupt each other's work — one agent's
+`stash pop` will happily take work the other one stashed. Have agents commit to
+their session branch instead.
+
+Parallelo watches for this and warns you once per repository per window, the
+first time the stash is touched while more than one session is live. It is a
+warning only; the extension deliberately has no stash feature. Turn it off with
+`parallelo.stashGuard`.
 
 **Worktrees isolate files, nothing else.** Ports, databases, running dev servers
 and `.env` state are all shared. Two agents running the same dev server will
@@ -73,6 +80,8 @@ appear.
 | `parallelo.branchPrefix` | `session/` | Prefix for branches created for new sessions |
 | `parallelo.autoOpenRepository` | `true` | Register a worktree with git when a terminal enters it |
 | `parallelo.followProcessCwd` | `true` | Resolve the worktree from the terminal's processes, not just the shell |
+| `parallelo.autoSessionColors` | `true` | Give each session a distinct colour automatically |
+| `parallelo.stashGuard` | `true` | Warn when the shared stash is used with more than one session live |
 | `parallelo.setupCommand` | — | Command run once in a new worktree before the agent starts |
 | `parallelo.copyFiles` | `.env`, `.env.local` | Untracked files copied into each new worktree |
 | `parallelo.showStatusBar` | `true` | Show the active session's branch in the status bar |
