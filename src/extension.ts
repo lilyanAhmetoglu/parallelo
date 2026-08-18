@@ -21,7 +21,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const git = await getGitApi();
   if (!git) {
     vscode.window.showWarningMessage(
-      'Agent Sessions needs the built-in Git extension. Enable it and reload the window.'
+      'Parallelo Session needs the built-in Git extension. Enable it and reload the window.'
     );
     return;
   }

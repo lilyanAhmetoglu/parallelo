@@ -288,5 +288,10 @@
   "homepage": "https://github.com/lilyanAhmetoglu/parallelo#readme",
   "bugs": {
     "url": "https://github.com/lilyanAhmetoglu/parallelo/issues"
+  },
+  "icon": "icon.png",
+  "galleryBanner": {
+    "color": "#1e1e1e",
+    "theme": "dark"
   }
 }
