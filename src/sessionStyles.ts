@@ -9,7 +9,7 @@ export interface SessionStyle {
   icon?: string;
 }
 
-const KEY = 'agentSessions.styles';
+const KEY = 'parallelo.styles';
 
 export const COLORS: { label: string; id: string }[] = [
   { label: 'Red', id: 'terminal.ansiRed' },

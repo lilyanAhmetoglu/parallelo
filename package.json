@@ -29,7 +29,7 @@
       "activitybar": [
         {
           "id": "worktreeSessions",
-          "title": "Agent Sessions",
+          "title": "Parallelo Session",
           "icon": "resources/sessions.svg"
         }
       ]
@@ -57,144 +57,144 @@
     "viewsWelcome": [
       {
         "view": "worktreeSessions.changes",
-        "contents": "Open a terminal inside a git worktree to see its changes here.\n\n[Start a worktree session](command:agentSessions.newSession)"
+        "contents": "Open a terminal inside a git worktree to see its changes here.\n\n[Start a worktree session](command:parallelo.newSession)"
       },
       {
         "view": "worktreeSessions.sessions",
-        "contents": "No terminals are running in a git worktree yet.\n\n[Start a worktree session](command:agentSessions.newSession)"
+        "contents": "No terminals are running in a git worktree yet.\n\n[Start a worktree session](command:parallelo.newSession)"
       }
     ],
     "commands": [
       {
-        "command": "agentSessions.newSession",
+        "command": "parallelo.newSession",
         "title": "Start Worktree Session",
-        "category": "Agent Sessions",
+        "category": "Parallelo Session",
         "icon": "$(add)"
       },
       {
-        "command": "agentSessions.refresh",
+        "command": "parallelo.refresh",
         "title": "Refresh",
-        "category": "Agent Sessions",
+        "category": "Parallelo Session",
         "icon": "$(refresh)"
       },
       {
-        "command": "agentSessions.focusTerminal",
+        "command": "parallelo.focusTerminal",
         "title": "Focus Session Terminal",
-        "category": "Agent Sessions"
+        "category": "Parallelo Session"
       },
       {
-        "command": "agentSessions.openChange",
+        "command": "parallelo.openChange",
         "title": "Open Change",
-        "category": "Agent Sessions"
+        "category": "Parallelo Session"
       },
       {
-        "command": "agentSessions.stageAll",
+        "command": "parallelo.stageAll",
         "title": "Stage All Changes in Session",
-        "category": "Agent Sessions",
+        "category": "Parallelo Session",
         "icon": "$(add)"
       },
       {
-        "command": "agentSessions.revealInScm",
+        "command": "parallelo.revealInScm",
         "title": "Reveal Session in Source Control",
-        "category": "Agent Sessions",
+        "category": "Parallelo Session",
         "icon": "$(source-control)"
       },
       {
-        "command": "agentSessions.removeWorktree",
+        "command": "parallelo.removeWorktree",
         "title": "Remove Session Worktree",
-        "category": "Agent Sessions",
+        "category": "Parallelo Session",
         "icon": "$(trash)"
       },
       {
-        "command": "agentSessions.renameSession",
+        "command": "parallelo.renameSession",
         "title": "Rename Session",
-        "category": "Agent Sessions",
+        "category": "Parallelo Session",
         "icon": "$(edit)"
       },
       {
-        "command": "agentSessions.setSessionColor",
+        "command": "parallelo.setSessionColor",
         "title": "Set Session Color",
-        "category": "Agent Sessions",
+        "category": "Parallelo Session",
         "icon": "$(symbol-color)"
       },
       {
-        "command": "agentSessions.setSessionIcon",
+        "command": "parallelo.setSessionIcon",
         "title": "Set Session Icon",
-        "category": "Agent Sessions",
+        "category": "Parallelo Session",
         "icon": "$(symbol-event)"
       },
       {
-        "command": "agentSessions.resetSessionStyle",
+        "command": "parallelo.resetSessionStyle",
         "title": "Reset Session Appearance",
-        "category": "Agent Sessions"
+        "category": "Parallelo Session"
       },
       {
-        "command": "agentSessions.customizeSession",
+        "command": "parallelo.customizeSession",
         "title": "Customize Session",
-        "category": "Agent Sessions",
+        "category": "Parallelo Session",
         "icon": "$(paintcan)"
       }
     ],
     "menus": {
       "view/title": [
         {
-          "command": "agentSessions.newSession",
+          "command": "parallelo.newSession",
           "when": "view == worktreeSessions.sessions",
           "group": "navigation@1"
         },
         {
-          "command": "agentSessions.refresh",
+          "command": "parallelo.refresh",
           "when": "view =~ /^worktreeSessions\\./",
           "group": "navigation@2"
         },
         {
-          "command": "agentSessions.stageAll",
+          "command": "parallelo.stageAll",
           "when": "view == worktreeSessions.changes",
           "group": "navigation@1"
         },
         {
-          "command": "agentSessions.revealInScm",
+          "command": "parallelo.revealInScm",
           "when": "view == worktreeSessions.changes",
           "group": "navigation@3"
         }
       ],
       "view/item/context": [
         {
-          "command": "agentSessions.customizeSession",
+          "command": "parallelo.customizeSession",
           "when": "view == worktreeSessions.sessions && viewItem == session",
           "group": "inline@1"
         },
         {
-          "command": "agentSessions.resetSessionStyle",
+          "command": "parallelo.resetSessionStyle",
           "when": "view == worktreeSessions.sessions && viewItem == session",
           "group": "1_style@3"
         },
         {
-          "command": "agentSessions.setSessionIcon",
+          "command": "parallelo.setSessionIcon",
           "when": "view == worktreeSessions.sessions && viewItem == session",
           "group": "1_style@2"
         },
         {
-          "command": "agentSessions.setSessionColor",
+          "command": "parallelo.setSessionColor",
           "when": "view == worktreeSessions.sessions && viewItem == session",
           "group": "1_style@1"
         },
         {
-          "command": "agentSessions.renameSession",
+          "command": "parallelo.renameSession",
           "when": "view == worktreeSessions.sessions && viewItem == session",
           "group": "1_style@0"
         },
         {
-          "command": "agentSessions.removeWorktree",
+          "command": "parallelo.removeWorktree",
           "when": "view == worktreeSessions.sessions && viewItem == session",
           "group": "inline"
         }
       ]
     },
     "configuration": {
-      "title": "Agent Sessions",
+      "title": "Parallelo Session",
       "properties": {
-        "agentSessions.agents": {
+        "parallelo.agents": {
           "type": "array",
           "default": [
             {
@@ -226,27 +226,27 @@
             }
           }
         },
-        "agentSessions.worktreePath": {
+        "parallelo.worktreePath": {
           "type": "string",
           "default": ".worktrees",
           "description": "Directory for new worktrees, relative to the repository root."
         },
-        "agentSessions.branchPrefix": {
+        "parallelo.branchPrefix": {
           "type": "string",
           "default": "session/",
           "description": "Prefix applied to branches created for new sessions."
         },
-        "agentSessions.autoOpenRepository": {
+        "parallelo.autoOpenRepository": {
           "type": "boolean",
           "default": true,
           "description": "Register a worktree with the git extension when a terminal enters it, so its changes appear without adding the folder to the workspace."
         },
-        "agentSessions.setupCommand": {
+        "parallelo.setupCommand": {
           "type": "string",
           "default": "",
           "description": "Command run once in a new worktree before the agent starts. Useful in a monorepo, for example: pnpm install."
         },
-        "agentSessions.copyFiles": {
+        "parallelo.copyFiles": {
           "type": "array",
           "default": [
             ".env",
@@ -257,12 +257,12 @@
             "type": "string"
           }
         },
-        "agentSessions.showStatusBar": {
+        "parallelo.showStatusBar": {
           "type": "boolean",
           "default": true,
           "description": "Show the active session's branch and change count in the status bar."
         },
-        "agentSessions.followProcessCwd": {
+        "parallelo.followProcessCwd": {
           "type": "boolean",
           "default": true,
           "description": "Resolve the worktree from the processes running in the terminal, not just the shell. Needed when an agent creates its own worktree and moves itself into it, leaving the shell behind. No effect on Windows."

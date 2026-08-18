@@ -137,7 +137,7 @@ export class ChangesProvider implements vscode.TreeDataProvider<Node> {
       new vscode.ThemeColor(COLORS[letter] ?? 'foreground')
     );
     item.command = {
-      command: 'agentSessions.openChange',
+      command: 'parallelo.openChange',
       title: 'Open Change',
       arguments: [node]
     };

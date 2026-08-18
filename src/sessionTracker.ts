@@ -139,7 +139,7 @@ export class SessionTracker implements vscode.Disposable {
     }
 
     const followProcesses = vscode.workspace
-      .getConfiguration('agentSessions')
+      .getConfiguration('parallelo')
       .get<boolean>('followProcessCwd', true);
 
     if (followProcesses) {
@@ -203,7 +203,7 @@ export class SessionTracker implements vscode.Disposable {
       }
 
       const autoOpen = vscode.workspace
-        .getConfiguration('agentSessions')
+        .getConfiguration('parallelo')
         .get<boolean>('autoOpenRepository', true);
       if (autoOpen) {
         try {

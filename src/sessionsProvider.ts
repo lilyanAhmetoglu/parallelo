@@ -48,7 +48,7 @@ export class SessionsProvider implements vscode.TreeDataProvider<Session> {
       : session.cwd.fsPath;
     item.contextValue = 'session';
     item.command = {
-      command: 'agentSessions.focusTerminal',
+      command: 'parallelo.focusTerminal',
       title: 'Focus Session Terminal',
       arguments: [session]
     };

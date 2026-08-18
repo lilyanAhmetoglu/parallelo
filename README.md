@@ -68,14 +68,14 @@ appear.
 
 | Setting | Default | What it does |
 |---|---|---|
-| `agentSessions.agents` | Claude Code, Codex, Shell only | Agents offered when starting a session |
-| `agentSessions.worktreePath` | `.worktrees` | Where new worktrees go, relative to the repo root |
-| `agentSessions.branchPrefix` | `session/` | Prefix for branches created for new sessions |
-| `agentSessions.autoOpenRepository` | `true` | Register a worktree with git when a terminal enters it |
-| `agentSessions.followProcessCwd` | `true` | Resolve the worktree from the terminal's processes, not just the shell |
-| `agentSessions.setupCommand` | — | Command run once in a new worktree before the agent starts |
-| `agentSessions.copyFiles` | `.env`, `.env.local` | Untracked files copied into each new worktree |
-| `agentSessions.showStatusBar` | `true` | Show the active session's branch in the status bar |
+| `parallelo.agents` | Claude Code, Codex, Shell only | Agents offered when starting a session |
+| `parallelo.worktreePath` | `.worktrees` | Where new worktrees go, relative to the repo root |
+| `parallelo.branchPrefix` | `session/` | Prefix for branches created for new sessions |
+| `parallelo.autoOpenRepository` | `true` | Register a worktree with git when a terminal enters it |
+| `parallelo.followProcessCwd` | `true` | Resolve the worktree from the terminal's processes, not just the shell |
+| `parallelo.setupCommand` | — | Command run once in a new worktree before the agent starts |
+| `parallelo.copyFiles` | `.env`, `.env.local` | Untracked files copied into each new worktree |
+| `parallelo.showStatusBar` | `true` | Show the active session's branch in the status bar |
 
 ## Licence
 

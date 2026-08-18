@@ -47,7 +47,7 @@ export async function newSession(
     return;
   }
 
-  const config = vscode.workspace.getConfiguration('agentSessions');
+  const config = vscode.workspace.getConfiguration('parallelo');
   const agents = config.get<AgentChoice[]>('agents', []);
   const agent =
     agents.length > 1

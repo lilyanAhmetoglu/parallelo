@@ -52,7 +52,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     filesView.title = session ? `Files \u2014 ${styles.title(session)}` : 'Files';
 
     const show = vscode.workspace
-      .getConfiguration('agentSessions')
+      .getConfiguration('parallelo')
       .get<boolean>('showStatusBar', true);
     if (!show || !session?.repository) {
       status.hide();
@@ -79,7 +79,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     tracker.onDidChangeSession(paint),
     styles.onDidChange(() => paint(tracker.activeSession)),
 
-    vscode.commands.registerCommand('agentSessions.refresh', async () => {
+    vscode.commands.registerCommand('parallelo.refresh', async () => {
       await tracker.syncAll();
       await tracker.activeSession?.repository?.status();
       changes.refresh();
@@ -87,19 +87,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       sessions.refresh();
     }),
 
-    vscode.commands.registerCommand('agentSessions.newSession', () =>
+    vscode.commands.registerCommand('parallelo.newSession', () =>
       newSession(git, tracker)
     ),
 
-    vscode.commands.registerCommand('agentSessions.openChange', (node: ChangeNode) =>
+    vscode.commands.registerCommand('parallelo.openChange', (node: ChangeNode) =>
       changes.openChange(node)
     ),
 
-    vscode.commands.registerCommand('agentSessions.focusTerminal', (session: Session) => {
+    vscode.commands.registerCommand('parallelo.focusTerminal', (session: Session) => {
       session.terminal.show(false);
     }),
 
-    vscode.commands.registerCommand('agentSessions.stageAll', async () => {
+    vscode.commands.registerCommand('parallelo.stageAll', async () => {
       const repo = tracker.activeSession?.repository;
       if (!repo) {
         vscode.window.showInformationMessage('No session is active.');
@@ -113,7 +113,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await repo.add(paths);
     }),
 
-    vscode.commands.registerCommand('agentSessions.revealInScm', async () => {
+    vscode.commands.registerCommand('parallelo.revealInScm', async () => {
       const repo = tracker.activeSession?.repository;
       if (!repo) {
         return;
@@ -122,7 +122,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await vscode.commands.executeCommand('scm.repositories.focus', repo.rootUri);
     }),
 
-    vscode.commands.registerCommand('agentSessions.customizeSession', async (session?: Session) => {
+    vscode.commands.registerCommand('parallelo.customizeSession', async (session?: Session) => {
       const target = session ?? tracker.activeSession;
       if (!target) {
         vscode.window.showInformationMessage('No session is active.');
@@ -134,22 +134,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           {
             label: '$(edit) Rename',
             description: style.name ?? target.terminal.name,
-            command: 'agentSessions.renameSession'
+            command: 'parallelo.renameSession'
           },
           {
             label: '$(symbol-color) Color',
             description: style.color ? style.color.replace('terminal.ansi', '') : 'none',
-            command: 'agentSessions.setSessionColor'
+            command: 'parallelo.setSessionColor'
           },
           {
             label: '$(symbol-event) Icon',
             description: style.icon ?? 'default',
-            command: 'agentSessions.setSessionIcon'
+            command: 'parallelo.setSessionIcon'
           },
           {
             label: '$(discard) Reset appearance',
             description: '',
-            command: 'agentSessions.resetSessionStyle'
+            command: 'parallelo.resetSessionStyle'
           }
         ],
         { placeHolder: `Customize ${styles.title(target)}` }
@@ -159,7 +159,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     }),
 
-    vscode.commands.registerCommand('agentSessions.renameSession', async (session?: Session) => {
+    vscode.commands.registerCommand('parallelo.renameSession', async (session?: Session) => {
       const target = session ?? tracker.activeSession;
       if (!target) {
         vscode.window.showInformationMessage('No session is active.');
@@ -176,7 +176,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await styles.update(target, { name: name.trim() || undefined });
     }),
 
-    vscode.commands.registerCommand('agentSessions.setSessionColor', async (session?: Session) => {
+    vscode.commands.registerCommand('parallelo.setSessionColor', async (session?: Session) => {
       const target = session ?? tracker.activeSession;
       if (!target) {
         vscode.window.showInformationMessage('No session is active.');
@@ -195,7 +195,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await styles.update(target, { color: picked.id });
     }),
 
-    vscode.commands.registerCommand('agentSessions.setSessionIcon', async (session?: Session) => {
+    vscode.commands.registerCommand('parallelo.setSessionIcon', async (session?: Session) => {
       const target = session ?? tracker.activeSession;
       if (!target) {
         vscode.window.showInformationMessage('No session is active.');
@@ -214,14 +214,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await styles.update(target, { icon: picked.id });
     }),
 
-    vscode.commands.registerCommand('agentSessions.resetSessionStyle', async (session?: Session) => {
+    vscode.commands.registerCommand('parallelo.resetSessionStyle', async (session?: Session) => {
       const target = session ?? tracker.activeSession;
       if (target) {
         await styles.clear(target);
       }
     }),
 
-    vscode.commands.registerCommand('agentSessions.removeWorktree', (session: Session) => {
+    vscode.commands.registerCommand('parallelo.removeWorktree', (session: Session) => {
       const root = session?.repository?.rootUri.fsPath;
       if (!root) {
         vscode.window.showInformationMessage('This session is not in a worktree.');
