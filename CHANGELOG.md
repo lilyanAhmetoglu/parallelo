@@ -28,6 +28,10 @@
   whatever directory it moves itself into.
 
 ### Changed
+- The two row actions say what they do rather than what they are called. The X
+  reads "Close Session (Keeps the Worktree and Changes)" and the bin reads
+  "Delete Worktree (Discards Uncommitted Changes)", so hovering either one
+  answers the only question worth asking about them.
 - The remove-worktree confirmation counts what is at stake instead of warning
   in the abstract: how many files have uncommitted changes, which branch is
   being kept, and that the branch keeps anything committed to it. A worktree

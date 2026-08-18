@@ -101,7 +101,7 @@
       },
       {
         "command": "parallelo.removeWorktree",
-        "title": "Remove Session Worktree",
+        "title": "Delete Worktree (Discards Uncommitted Changes)",
         "category": "Parallelo Session",
         "icon": "$(trash)"
       },
@@ -136,7 +136,7 @@
       },
       {
         "command": "parallelo.closeSession",
-        "title": "Close Session",
+        "title": "Close Session (Keeps the Worktree and Changes)",
         "category": "Parallelo Session",
         "icon": "$(close)"
       }
