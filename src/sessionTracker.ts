@@ -5,6 +5,14 @@ import { processCwds, forgetProcess } from './processCwd';
 import { log } from './log';
 
 export interface Session {
+  /**
+   * Stable identity for this session's row.
+   *
+   * A `Session` is rebuilt from scratch every time its terminal is re-resolved,
+   * so anything that has to point at a row across a refresh -- the tree's
+   * selection, which matches by identity -- cannot hold the object itself.
+   */
+  id: string;
   /** The terminal driving this session. */
   terminal: vscode.Terminal;
   /** Working directory the terminal is currently in. */
@@ -49,6 +57,9 @@ export class SessionTracker implements vscode.Disposable {
   private readonly closing = new Set<vscode.Terminal>();
   private readonly repoStateListeners = new Map<Repository, vscode.Disposable>();
   private current: Session | undefined;
+  /** Row identities, held per terminal so they outlive each re-resolve. */
+  private readonly ids = new Map<vscode.Terminal, string>();
+  private nextId = 0;
 
   private readonly _onDidChangeSession = new vscode.EventEmitter<Session | undefined>();
   /** Fires when the active session changes, or when its git state changes. */
@@ -60,7 +71,12 @@ export class SessionTracker implements vscode.Disposable {
 
   constructor(private readonly git: GitAPI) {
     this.disposables.push(
-      vscode.window.onDidChangeActiveTerminal(() => void this.sync()),
+      vscode.window.onDidChangeActiveTerminal(terminal => {
+        // Whether this fires is the first thing to know when the views stop
+        // following the terminal, and it is invisible from outside.
+        log(`event: active terminal is now ${terminal ? terminal.name : 'none'}`);
+        void this.sync();
+      }),
       vscode.window.onDidOpenTerminal(() => void this.syncAll()),
       // Shell integration reports the cwd, and updates it on every `cd`.
       vscode.window.onDidChangeTerminalShellIntegration(() => void this.sync()),
@@ -86,6 +102,15 @@ export class SessionTracker implements vscode.Disposable {
     return [...this.sessions.values()];
   }
 
+  private idFor(terminal: vscode.Terminal): string {
+    let id = this.ids.get(terminal);
+    if (!id) {
+      id = `session-${++this.nextId}`;
+      this.ids.set(terminal, id);
+    }
+    return id;
+  }
+
   /** Resolves one terminal into a session, without changing which is active. */
   private async track(terminal: vscode.Terminal): Promise<Session | undefined> {
     if (this.closing.has(terminal)) {
@@ -103,6 +128,7 @@ export class SessionTracker implements vscode.Disposable {
       : path.basename((root ?? cwd).fsPath);
 
     const session: Session = {
+      id: this.idFor(terminal),
       terminal,
       cwd,
       root: root?.fsPath,
@@ -126,11 +152,31 @@ export class SessionTracker implements vscode.Disposable {
   async sync(): Promise<void> {
     const terminal = vscode.window.activeTerminal;
     if (!terminal) {
+      log('sync: no active terminal');
       this.setCurrent(undefined);
       return;
     }
 
     const session = await this.track(terminal);
+
+    // Resolving a terminal is asynchronous -- `ps`, `lsof` and a walk up the
+    // filesystem -- and terminal switches burst, so a slow resolve for the
+    // terminal you just left can land after the fast one for the terminal you
+    // are now in and put the views back on the old session.
+    //
+    // Asking whether this terminal is still the active one, rather than
+    // counting syncs, is the question actually worth answering. A counter also
+    // counts the syncs this class triggers on itself -- `resolveRepository`
+    // registers the worktree, which fires `onDidOpenRepository`, which syncs --
+    // so a correct result would be thrown away in favour of one that may well
+    // resolve nothing and fall back to the previous session.
+    if (vscode.window.activeTerminal !== terminal) {
+      log(`sync: ${terminal.name} is no longer active, dropping its result`);
+      // `track` already replaced this terminal's entry, so the list has moved
+      // on even though the active session has not.
+      this._onDidChangeSessions.fire();
+      return;
+    }
     if (!session) {
       if (this.closing.has(terminal)) {
         this.setCurrent(undefined);
@@ -138,7 +184,21 @@ export class SessionTracker implements vscode.Disposable {
       }
       // The directory has not been reported yet. Keep the last session
       // rather than blanking the views on every terminal switch.
+      log(
+        `sync: ${terminal.name} reported no directory, keeping ` +
+          `${this.current?.label ?? 'nothing'}`
+      );
       return;
+    }
+
+    const moved =
+      this.current?.terminal !== session.terminal ||
+      this.current?.cwd.fsPath !== session.cwd.fsPath;
+    if (moved) {
+      log(
+        `sync: active session is ${terminal.name} in ${session.cwd.fsPath}` +
+          (session.root ? ` (worktree ${session.root})` : ' (not in a worktree)')
+      );
     }
 
     this.setCurrent(session);
@@ -367,6 +427,7 @@ export class SessionTracker implements vscode.Disposable {
   }
 
   private forget(terminal: vscode.Terminal): void {
+    this.ids.delete(terminal);
     void terminal.processId.then(pid => {
       if (pid) {
         forgetProcess(pid);

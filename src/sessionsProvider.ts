@@ -23,6 +23,14 @@ export class SessionsProvider implements vscode.TreeDataProvider<Session> {
     return this.tracker.allSessions;
   }
 
+  /**
+   * Required by `TreeView.reveal`, which is how the selected row follows the
+   * focused terminal. The list is flat, so every session is a root.
+   */
+  getParent(): undefined {
+    return undefined;
+  }
+
   getTreeItem(session: Session): vscode.TreeItem {
     const active = this.tracker.activeSession?.terminal === session.terminal;
     const style = this.styles.get(session);
@@ -30,6 +38,11 @@ export class SessionsProvider implements vscode.TreeDataProvider<Session> {
       style.name || session.terminal.name,
       vscode.TreeItemCollapsibleState.None
     );
+
+    // Without this the tree matches rows by object identity, and a `Session`
+    // is a fresh object after every re-resolve -- so a pending selection would
+    // be looking for a row that no longer exists.
+    item.id = session.id;
 
     const branch = session.repository?.state.HEAD?.name;
     const dirty =

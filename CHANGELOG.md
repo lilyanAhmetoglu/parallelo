@@ -28,6 +28,9 @@
   whatever directory it moves itself into.
 
 ### Changed
+- The shared-stash warning offers **Show Log**, and the log names every worktree
+  sharing that stack. The warning has no room to say which sessions are
+  involved, which is the first thing worth knowing once it has fired.
 - The bin is the only action on a session row again, and reads "Delete Worktree
   (Discards Uncommitted Changes)" so hovering it answers the only question worth
   asking. Closing a session without deleting anything is what closing its
@@ -41,6 +44,15 @@
   there is something to discard.
 
 ### Fixed
+- Switching terminals quickly no longer leaves the views on the wrong session.
+  Resolving a terminal takes a filesystem walk and a `ps`, so on a burst of
+  switches the answer for the terminal you left could land after the answer for
+  the terminal you arrived at and overwrite it. A sync now drops its result if
+  the terminal it was resolving is no longer the active one.
+- The Sessions list moves its selection onto the terminal you are working in.
+  Switching from the terminal panel's tab list never touched the tree, so the
+  highlighted row stayed on whatever was last clicked and disagreed with the
+  view titles.
 - New worktrees branch off the main checkout instead of the session you happen
   to have focused. Branching from a linked worktree nested the new one inside
   it, where it showed up as untracked files in the session you branched from.
