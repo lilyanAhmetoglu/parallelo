@@ -16,6 +16,15 @@ export interface SessionStyle {
    * has never been looked at.
    */
   autoColor?: boolean;
+  /** Kept in the pinned section at the top of the Sessions list. */
+  pinned?: boolean;
+  /**
+   * Position within its section, set by dragging.
+   *
+   * Absent means "never been dragged", which sorts after everything that has,
+   * in the order the terminals were opened.
+   */
+  order?: number;
 }
 
 const KEY = 'parallelo.styles';
@@ -120,7 +129,14 @@ export class SessionStyles implements vscode.Disposable {
     // accumulating empty records for every worktree ever opened. A record
     // saying only "the user asked for no colour" is not empty -- discarding it
     // would hand the session an automatic colour on the next pass.
-    if (!next.name && !next.color && !next.icon && next.autoColor !== false) {
+    if (
+      !next.name &&
+      !next.color &&
+      !next.icon &&
+      !next.pinned &&
+      next.order === undefined &&
+      next.autoColor !== false
+    ) {
       delete all[key];
     } else {
       all[key] = next;
@@ -136,7 +152,18 @@ export class SessionStyles implements vscode.Disposable {
 
   private async clearNow(session: Session): Promise<void> {
     const all = { ...this.all() };
-    delete all[this.keyFor(session)];
+    const key = this.keyFor(session);
+    const { pinned, order } = all[key] ?? {};
+
+    // Resetting *appearance* is name, colour and icon. Where the row sits is
+    // not appearance, and dropping it here would move the session down the
+    // list as an unannounced side effect of a command about colours.
+    if (pinned || order !== undefined) {
+      all[key] = { pinned, order };
+    } else {
+      delete all[key];
+    }
+
     await this.memento.update(KEY, all);
     this._onDidChange.fire();
   }
@@ -176,9 +203,9 @@ export class SessionStyles implements vscode.Disposable {
         continue;
       }
       changed = true;
-      // A name or icon is worth keeping; a record holding only a colour we
-      // chose ourselves is not.
-      if (style.name || style.icon) {
+      // A name, icon, pin or hand-placed position is worth keeping; a record
+      // holding only a colour we chose ourselves is not.
+      if (style.name || style.icon || style.pinned || style.order !== undefined) {
         all[key] = { ...style, color: undefined, autoColor: undefined };
       } else {
         delete all[key];
@@ -289,6 +316,71 @@ export class SessionStyles implements vscode.Disposable {
     gone.forEach(key => delete all[key]);
     await this.memento.update(KEY, all);
     this._onDidChange.fire();
+  }
+
+  /**
+   * Pinned first, then hand-placed position, then the order terminals opened.
+   *
+   * Every tie is broken explicitly, down to the incoming index, so this never
+   * leans on the sort being stable -- and the incoming order is meaningful, so
+   * a session nobody has dragged keeps the place it has always had.
+   */
+  arrange(sessions: Session[]): Session[] {
+    return sessions
+      .map((session, index) => ({ session, style: this.get(session), index }))
+      .sort(
+        (a, b) =>
+          Number(Boolean(b.style.pinned)) - Number(Boolean(a.style.pinned)) ||
+          (a.style.order ?? Number.MAX_SAFE_INTEGER) -
+            (b.style.order ?? Number.MAX_SAFE_INTEGER) ||
+          a.index - b.index
+      )
+      .map(entry => entry.session);
+  }
+
+  /**
+   * Writes a whole new arrangement in one go.
+   *
+   * One memento write and one event for the entire drop, rather than one per
+   * row -- a per-row loop would repaint the tree mid-reorder and let the user
+   * see it settle. Records are keyed by worktree, so two terminals in the same
+   * worktree share a position: dragging either moves both, which is the same
+   * rule their shared name and colour already follow.
+   */
+  setArrangement(entries: { session: Session; pinned: boolean }[]): Promise<void> {
+    return this.queue(async () => {
+      const all = { ...this.all() };
+
+      // One write per worktree, not per session. Records are keyed by the
+      // worktree, so two terminals in the same one share a record -- writing
+      // both means the second overwrites the first, and dragging one of them
+      // into the pinned section undoes its own pin on the very next line.
+      const placed = new Set<string>();
+      let next = 0;
+      for (const { session, pinned } of entries) {
+        const key = this.keyFor(session);
+        if (placed.has(key)) {
+          continue;
+        }
+        placed.add(key);
+        all[key] = { ...all[key], order: next++, pinned: pinned || undefined };
+      }
+
+      // Renumber every other stored position too, keeping its relative order,
+      // so it sits after what is live now. Records outlive their terminals, so
+      // handing 0..n-1 to each new set of sessions would leave two saved
+      // arrangements sharing the same numbers, and they interleave when the
+      // first set comes back.
+      const dormant = Object.keys(all)
+        .filter(key => !placed.has(key) && all[key].order !== undefined)
+        .sort((a, b) => (all[a].order ?? 0) - (all[b].order ?? 0));
+      for (const key of dormant) {
+        all[key] = { ...all[key], order: next++ };
+      }
+
+      await this.memento.update(KEY, all);
+      this._onDidChange.fire();
+    });
   }
 
   /** What to call this session in a view title. */

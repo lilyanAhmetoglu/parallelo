@@ -3,6 +3,22 @@
 ## [Unreleased]
 
 ### Added
+- Ahead and behind counts on each session row, next to the change count, so a
+  session that has drifted from its upstream says so without opening anything.
+  Shown only when there is something to show: a branch with no upstream, or one
+  level with it, stays quiet.
+- **Reorder sessions by dragging.** The order is stored against the worktree
+  alongside name, colour and icon, so it survives a reload.
+- **Pin Session to Top**, for when five sessions are running and two of them
+  matter. Pinned sessions move into their own **Pinned** section, and the
+  section boundary is the pin: drag a session in to pin it, out to unpin. The
+  headings appear only once something is pinned — two headings above a
+  four-row list is chrome — so the first pin comes from the row's menu. Pins survive a reload, and **Reset Session
+  Appearance** leaves them alone, because where a row sits is not appearance.
+- **Switch Session** — the status bar is now a session picker rather than a
+  second way to open a view that says the same thing. Also in the command
+  palette. With one session running it just switches, instead of asking you to
+  confirm the only option.
 - Bind the active terminal to its git worktree; the Changes and Files views
   follow whichever terminal is focused.
 - Resolve the worktree from the terminal's process tree, so agents that create
