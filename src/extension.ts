@@ -44,11 +44,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     showCollapseAll: true
   });
   const sessionsView = vscode.window.createTreeView('worktreeSessions.sessions', {
-    treeDataProvider: sessions
+    treeDataProvider: sessions,
+    dragAndDropController: sessions,
+    canSelectMany: true
   });
 
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-  status.command = 'workbench.view.extension.worktreeSessions';
+  // The status bar already says which session is active, so the useful thing to
+  // do with it is change session, not open a view that says the same again.
+  status.command = 'parallelo.quickSwitch';
 
   /** Terminal whose row is already selected, so it is only revealed once. */
   let revealed: vscode.Terminal | undefined;
@@ -140,6 +144,93 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       session.terminal.show(false);
     }),
 
+    vscode.commands.registerCommand('parallelo.pinSession', async (session?: Session) => {
+      const target = session ?? tracker.activeSession;
+      if (!target) {
+        vscode.window.showInformationMessage('No session is active.');
+        return;
+      }
+      // Position clears with the group. An `order` means a place inside one
+      // section, so carrying it into the other one drops the row at an
+      // arbitrary height; the end of the section it just joined is at least
+      // somewhere the user can predict.
+      await styles.update(target, { pinned: true, order: undefined });
+    }),
+
+    vscode.commands.registerCommand('parallelo.unpinSession', async (session?: Session) => {
+      const target = session ?? tracker.activeSession;
+      if (!target) {
+        vscode.window.showInformationMessage('No session is active.');
+        return;
+      }
+      await styles.update(target, { pinned: undefined, order: undefined });
+    }),
+
+    vscode.commands.registerCommand('parallelo.quickSwitch', async () => {
+      const ordered = styles.arrange(tracker.allSessions);
+      if (!ordered.length) {
+        vscode.window.showInformationMessage(
+          'No sessions are running. Start one from the Sessions view.'
+        );
+        return;
+      }
+
+      const active = tracker.activeSession;
+      // One session, and it is the one you are already in. A picker would
+      // offer the only thing you have, and focusing it would do nothing at
+      // all, so show the list it lives in instead.
+      if (ordered.length === 1) {
+        if (ordered[0].terminal === active?.terminal) {
+          await vscode.commands.executeCommand(
+            'workbench.view.extension.worktreeSessions'
+          );
+        } else {
+          ordered[0].terminal.show(false);
+        }
+        return;
+      }
+
+      const picked = await vscode.window.showQuickPick(
+        ordered.map(session => {
+          const style = styles.get(session);
+          const head = session.repository?.state.HEAD;
+          const dirty =
+            (session.repository?.state.workingTreeChanges.length ?? 0) +
+            (session.repository?.state.indexChanges.length ?? 0);
+          // Two terminals in one worktree share a name, and choosing between
+          // terminals is this picker's entire job -- so name the terminal too,
+          // exactly as the rows do.
+          const shared =
+            session.root !== undefined &&
+            ordered.filter(other => other.root === session.root).length > 1;
+          return {
+            // The same expression the rows use. `styles.title` would label the
+            // picker by worktree and the row by terminal, and then nothing
+            // connects the two.
+            label: `${style.pinned ? '$(pinned) ' : ''}${style.name || session.terminal.name}`,
+            description: [
+              head?.name,
+              head?.ahead ? `\u2191${head.ahead}` : '',
+              head?.behind ? `\u2193${head.behind}` : '',
+              shared ? session.terminal.name : '',
+              dirty ? `${dirty} changed` : '',
+              session.terminal === active?.terminal ? 'current' : ''
+            ]
+              .filter(Boolean)
+              .join(' \u00b7 '),
+            detail: session.cwd.fsPath,
+            session
+          };
+        }),
+        {
+          placeHolder: 'Switch to a session',
+          matchOnDescription: true,
+          matchOnDetail: true
+        }
+      );
+      picked?.session.terminal.show(false);
+    }),
+
     vscode.commands.registerCommand('parallelo.stageAll', async () => {
       const repo = tracker.activeSession?.repository;
       if (!repo) {
@@ -188,6 +279,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             label: '$(symbol-event) Icon',
             description: style.icon ?? 'default',
             command: 'parallelo.setSessionIcon'
+          },
+          {
+            label: style.pinned ? '$(pin) Unpin from top' : '$(pinned) Pin to top',
+            description: style.pinned ? 'currently pinned' : '',
+            command: style.pinned ? 'parallelo.unpinSession' : 'parallelo.pinSession'
           },
           {
             label: '$(discard) Reset appearance',

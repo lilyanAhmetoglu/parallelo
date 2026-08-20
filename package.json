@@ -141,6 +141,24 @@
         "icon": "$(close)"
       },
       {
+        "command": "parallelo.pinSession",
+        "title": "Pin Session to Top",
+        "category": "Parallelo Session",
+        "icon": "$(pinned)"
+      },
+      {
+        "command": "parallelo.unpinSession",
+        "title": "Unpin Session",
+        "category": "Parallelo Session",
+        "icon": "$(pin)"
+      },
+      {
+        "command": "parallelo.quickSwitch",
+        "title": "Switch Session",
+        "category": "Parallelo Session",
+        "icon": "$(arrow-swap)"
+      },
+      {
         "command": "parallelo.showLog",
         "title": "Show Log",
         "category": "Parallelo Session"
@@ -172,42 +190,52 @@
       "view/item/context": [
         {
           "command": "parallelo.customizeSession",
-          "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]ession$/",
+          "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]ession(Pinned)?$/",
           "group": "inline@1"
         },
         {
           "command": "parallelo.resetSessionStyle",
-          "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]ession$/",
+          "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]ession(Pinned)?$/",
           "group": "1_style@3"
         },
         {
           "command": "parallelo.setSessionIcon",
-          "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]ession$/",
+          "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]ession(Pinned)?$/",
           "group": "1_style@2"
         },
         {
           "command": "parallelo.setSessionColor",
-          "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]ession$/",
+          "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]ession(Pinned)?$/",
           "group": "1_style@1"
         },
         {
           "command": "parallelo.renameSession",
-          "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]ession$/",
+          "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]ession(Pinned)?$/",
           "group": "1_style@0"
         },
         {
           "command": "parallelo.removeWorktree",
-          "when": "view == worktreeSessions.sessions && viewItem == worktreeSession",
+          "when": "view == worktreeSessions.sessions && viewItem =~ /^worktreeSession(Pinned)?$/",
           "group": "inline@2"
         },
         {
-          "command": "parallelo.closeSession",
+          "command": "parallelo.pinSession",
           "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]ession$/",
+          "group": "1a_pin@1"
+        },
+        {
+          "command": "parallelo.unpinSession",
+          "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]essionPinned$/",
+          "group": "1a_pin@1"
+        },
+        {
+          "command": "parallelo.closeSession",
+          "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]ession(Pinned)?$/",
           "group": "2_session@1"
         },
         {
           "command": "parallelo.removeWorktree",
-          "when": "view == worktreeSessions.sessions && viewItem == worktreeSession",
+          "when": "view == worktreeSessions.sessions && viewItem =~ /^worktreeSession(Pinned)?$/",
           "group": "9_danger@1"
         }
       ]

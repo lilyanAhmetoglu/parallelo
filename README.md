@@ -17,8 +17,15 @@ process in the terminal is the only contract.**
   only. Click a file to open its native diff, with per-hunk staging intact.
 - **Files** — a file tree rooted at that worktree, so you browse the branch you
   are actually on.
-- **Sessions** — every terminal inside a worktree, with its branch and change
-  count. Click one to focus its terminal.
+- **Sessions** — every terminal inside a worktree, with its branch, how far it
+  has drifted from its upstream (`↑2 ↓1`) and its change count. Click one to
+  focus its terminal, and the list follows whichever terminal you are in.
+  **Drag rows to reorder them**; the order is remembered against the worktree.
+  Pin the ones you care about — from the row's right-click menu — and they move
+  into a **Pinned** section at the top. Once that section exists you can drag
+  sessions into it to pin them and out of it to unpin, so the section boundary
+  and the pin are the same thing. The headings only appear while something is
+  pinned.
 - **Delete Worktree** (bin) — deletes the worktree directory. The branch is kept,
   uncommitted changes are not. It always asks first, and tells you how many files
   are at stake. To make a session go away without deleting anything, close its
@@ -26,7 +33,9 @@ process in the terminal is the only contract.**
 - **Session appearance** — every session gets its own colour straight away, and
   you can set a name, colour and icon yourself. They stick to the worktree, so
   they survive a reload.
-- **Status bar** — the active session's branch and how many files it has touched.
+- **Status bar** — the active session's branch and how many files it has
+  touched. Click it to switch session without leaving the keyboard; the same
+  picker is **Parallelo Session: Switch Session** in the command palette.
 - **Start Session** — pick the agent, then say what kind of session it is. A
   **worktree session** creates the branch and worktree, copies your untracked
   config across, runs a setup command and launches the agent in it. A **normal
