@@ -8,7 +8,7 @@ import { newSession, removeWorktree } from './worktree';
 import type { Session } from './sessionTracker';
 import { SessionStyles, COLORS, ICONS } from './sessionStyles';
 import { StashGuard } from './stashGuard';
-import { showLog, disposeLog } from './log';
+import { log, showLog, disposeLog } from './log';
 
 async function getGitApi(): Promise<GitAPI | undefined> {
   const extension = vscode.extensions.getExtension<GitExtension>('vscode.git');
@@ -50,9 +50,36 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   status.command = 'workbench.view.extension.worktreeSessions';
 
+  /** Terminal whose row is already selected, so it is only revealed once. */
+  let revealed: vscode.Terminal | undefined;
+
   const paint = (session: Session | undefined) => {
     changesView.title = changes.describe(session);
     filesView.title = session ? `Files \u2014 ${styles.title(session)}` : 'Files';
+
+    // Move the selection onto the row for the focused terminal. Switching
+    // terminals from the panel's tab list is a terminal event and never touches
+    // the tree, so without this the list stays on whatever was last clicked and
+    // stops agreeing with the titles above. `focus: false` leaves the keyboard
+    // where it was -- selecting a row does not run its command, so this cannot
+    // bounce focus back into the terminal.
+    //
+    // Only on an actual switch. This runs on every git state change of the
+    // active repository too, and re-selecting on each one would drag the
+    // highlight back off whatever row the user had just arrowed onto.
+    if (!session) {
+      revealed = undefined;
+    } else if (session.terminal !== revealed && sessionsView.visible) {
+      revealed = session.terminal;
+      void Promise.resolve(
+        sessionsView.reveal(session, { select: true, focus: false })
+      ).catch(error => {
+        // Nothing retries this, so let the next switch back onto this terminal
+        // try again rather than treating it as already selected.
+        revealed = undefined;
+        log(`sessions: could not select the row for ${session.terminal.name} -- ${error}`);
+      });
+    }
 
     const show = vscode.workspace
       .getConfiguration('parallelo')

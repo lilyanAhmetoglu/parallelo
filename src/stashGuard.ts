@@ -3,7 +3,7 @@ import * as path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import type { SessionTracker } from './sessionTracker';
-import { log } from './log';
+import { log, showLog } from './log';
 
 const run = promisify(execFile);
 
@@ -82,7 +82,7 @@ export class StashGuard implements vscode.Disposable {
       // How many worktrees sit on each stack. Counting worktrees rather than
       // terminals: two terminals in one worktree are a plain git race, not the
       // cross-worktree hazard this warns about.
-      const worktrees = new Map<string, number>();
+      const worktrees = new Map<string, string[]>();
       const roots = new Set(
         this.tracker.allSessions
           .map(session => session.repository?.rootUri.fsPath)
@@ -91,7 +91,12 @@ export class StashGuard implements vscode.Disposable {
       for (const root of roots) {
         const common = await this.commonDirFor(root);
         if (common) {
-          worktrees.set(common, (worktrees.get(common) ?? 0) + 1);
+          const sharing = worktrees.get(common);
+          if (sharing) {
+            sharing.push(root);
+          } else {
+            worktrees.set(common, [root]);
+          }
         }
       }
 
@@ -171,7 +176,7 @@ export class StashGuard implements vscode.Disposable {
     this.disposables.push(watcher);
   }
 
-  private async inspect(common: string, sharing: number): Promise<void> {
+  private async inspect(common: string, sharing: string[]): Promise<void> {
     const entries = await this.reflog(common);
     const before = this.depth.get(common);
 
@@ -183,19 +188,25 @@ export class StashGuard implements vscode.Disposable {
     // First look at this repository: nothing to compare against yet, and a
     // stash that was already sitting there is not news.
     if (before === undefined) {
-      log(`stash: watching ${common}, ${entries.length} on the stack, ${sharing} worktree(s)`);
+      log(
+        `stash: watching ${common}, ${entries.length} on the stack, ` +
+          `${sharing.length} worktree(s)`
+      );
       return;
     }
     if (entries.length === before) {
       return;
     }
 
-    log(`stash: stack went ${before} -> ${entries.length}, ${sharing} worktree(s) with a session`);
+    log(
+      `stash: stack went ${before} -> ${entries.length}, ` +
+        `${sharing.length} worktree(s) with a session`
+    );
     if (this.warned.has(common)) {
       log('stash: already warned about this repository in this window');
       return;
     }
-    if (sharing < 2) {
+    if (sharing.length < 2) {
       log('stash: only one worktree has a session, so nothing can collide -- staying quiet');
       return;
     }
@@ -210,12 +221,34 @@ export class StashGuard implements vscode.Disposable {
         : 'A stash was pushed.'
       : 'A stash was applied or dropped.';
 
+    // The warning has no room to name them, and which worktrees share the
+    // stack is the first thing you want to know once it has fired.
+    for (const root of sharing) {
+      log(`stash: sharing this stack -- ${root}`);
+    }
+
     this.warned.add(common);
-    vscode.window.showWarningMessage(
-      `${what} The stash is shared across every worktree of this repository, and ` +
-        `${sharing} of them have a live session. One can pop what another stashed. ` +
-        'Have agents commit to their session branch instead.'
-    );
+    // A notification rather than a modal, deliberately. The stash has already
+    // happened and there is nothing to decide, so blocking the window -- and
+    // every agent running in it -- buys prominence at too high a price.
+    const openLog = 'Show Log';
+    void vscode.window
+      .showWarningMessage(
+        `${what} The stash is shared across every worktree of this repository, and ` +
+          `${sharing.length} of them have a live session. One can pop what another ` +
+          'stashed. Have agents commit to their session branch instead.',
+        openLog
+      )
+      .then(
+        choice => {
+          if (choice === openLog) {
+            showLog();
+          }
+        },
+        () => {
+          // The window is going away. There is nobody left to warn.
+        }
+      );
   }
 
   /** Lines of `logs/refs/stash`, oldest first. Absent reflog reads as empty. */
