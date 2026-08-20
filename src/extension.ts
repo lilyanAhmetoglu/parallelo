@@ -161,12 +161,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       newSession(git, tracker)
     ),
 
-    vscode.commands.registerCommand('parallelo.openChange', (node: ChangeNode) =>
+    vscode.commands.registerCommand('parallelo.openChange', (node?: ChangeNode) =>
       changes.openChange(node)
     ),
 
-    vscode.commands.registerCommand('parallelo.focusTerminal', (session: Session) => {
-      session.terminal.show(false);
+    vscode.commands.registerCommand('parallelo.discardChange', (node?: ChangeNode) =>
+      changes.discardChange(node)
+    ),
+
+    vscode.commands.registerCommand('parallelo.unstageChange', (node?: ChangeNode) =>
+      changes.unstageChange(node)
+    ),
+
+    vscode.commands.registerCommand('parallelo.focusTerminal', (session?: Session) => {
+      (session ?? tracker.activeSession)?.terminal.show(false);
     }),
 
     vscode.commands.registerCommand('parallelo.pinSession', async (session?: Session) => {

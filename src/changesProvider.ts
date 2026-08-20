@@ -11,6 +11,14 @@ interface GroupNode {
   kind: 'group';
   label: string;
   staged: boolean;
+  /**
+   * A file in a merge or rebase conflict.
+   *
+   * Its own flag rather than a status check: the git extension keeps these in
+   * a group of their own and `clean` looks only at the working tree and
+   * untracked groups, so discarding a conflicted file finds nothing to act on.
+   */
+  merge?: boolean;
   changes: Change[];
 }
 
@@ -18,6 +26,7 @@ interface ChangeNode {
   kind: 'change';
   change: Change;
   staged: boolean;
+  merge?: boolean;
   repository: Repository;
 }
 
@@ -84,15 +93,28 @@ export class ChangesProvider implements vscode.TreeDataProvider<Node> {
       const merge = repository.state.mergeChanges;
       const staged = repository.state.indexChanges;
       const unstaged = repository.state.workingTreeChanges;
+      // Empty under the default `git.untrackedChanges: mixed`, where these sit
+      // in the working tree group instead. Under `separate` they are only
+      // here, and reading one group would drop them from the view entirely.
+      const untracked = repository.state.untrackedChanges ?? [];
 
       if (merge.length) {
-        groups.push({ kind: 'group', label: 'Merge conflicts', staged: false, changes: merge });
+        groups.push({
+          kind: 'group',
+          label: 'Merge conflicts',
+          staged: false,
+          merge: true,
+          changes: merge
+        });
       }
       if (staged.length) {
         groups.push({ kind: 'group', label: 'Staged', staged: true, changes: staged });
       }
       if (unstaged.length) {
         groups.push({ kind: 'group', label: 'Changes', staged: false, changes: unstaged });
+      }
+      if (untracked.length) {
+        groups.push({ kind: 'group', label: 'Untracked', staged: false, changes: untracked });
       }
       return groups;
     }
@@ -102,6 +124,7 @@ export class ChangesProvider implements vscode.TreeDataProvider<Node> {
         kind: 'change' as const,
         change,
         staged: element.staged,
+        merge: element.merge,
         repository
       }));
     }
@@ -130,7 +153,18 @@ export class ChangesProvider implements vscode.TreeDataProvider<Node> {
 
     const letter = LETTERS[node.change.status] ?? '?';
     item.resourceUri = uri;
-    item.contextValue = node.staged ? 'stagedChange' : 'change';
+    // Untracked is its own kind. Discarding a modified file restores it;
+    // discarding an untracked one deletes it, and the row has to be able to
+    // say so before it is clicked.
+    const untracked =
+      node.change.status === Status.UNTRACKED || node.change.status === Status.IGNORED;
+    item.contextValue = node.merge
+      ? 'mergeChange'
+      : node.staged
+        ? 'stagedChange'
+        : untracked
+          ? 'untrackedChange'
+          : 'change';
     item.tooltip = `${path.relative(root, uri.fsPath)} \u2014 ${letter}`;
     item.iconPath = new vscode.ThemeIcon(
       'circle-filled',
@@ -144,8 +178,90 @@ export class ChangesProvider implements vscode.TreeDataProvider<Node> {
     return item;
   }
 
+  /**
+   * Throws away a working tree change, after saying what that costs.
+   *
+   * Modal, unlike the stash warning: that one reports something already done,
+   * and this one is about to destroy work that is on no branch and in no
+   * commit. There is a decision to make, so it is worth the interruption.
+   */
+  async discardChange(node: ChangeNode | undefined): Promise<void> {
+    if (!node) {
+      return;
+    }
+    const { change, repository, staged } = node;
+    const name = path.basename(change.uri.fsPath);
+
+    // `clean` only looks at the working tree and untracked groups, so a staged
+    // path would be quietly ignored -- the row would sit there afterwards
+    // looking as though the click missed.
+    if (staged) {
+      vscode.window.showInformationMessage(
+        `${name} is staged. Unstage it first, then discard it.`
+      );
+      return;
+    }
+
+    // Same reason: a conflicted file lives in the merge group and nowhere
+    // else, so `clean` would find nothing and the row would sit there looking
+    // as though the click had missed -- after a modal that promised otherwise.
+    if (node.merge) {
+      vscode.window.showInformationMessage(
+        `${name} is in a merge conflict. Resolve it, or undo the merge, before discarding it.`
+      );
+      return;
+    }
+
+    // The same two statuses the git extension dispatches on: it sends these
+    // to `git clean -f`, which deletes, and everything else to
+    // `git checkout -- `, which restores. The warning has to match what will
+    // actually happen, not what the file looks like.
+    const untracked =
+      change.status === Status.UNTRACKED || change.status === Status.IGNORED;
+    const detail = untracked
+      ? `${name} is not tracked by git, so discarding it deletes the file. ` +
+        'There is nothing to restore it from.'
+      : `The changes to ${name} are not committed and not on any branch. ` +
+        'They cannot be recovered.';
+
+    const confirm = await vscode.window.showWarningMessage(
+      untracked ? `Delete ${name}?` : `Discard changes to ${name}?`,
+      { modal: true, detail },
+      untracked ? 'Delete File' : 'Discard Changes'
+    );
+    if (!confirm) {
+      return;
+    }
+
+    try {
+      await repository.clean([change.uri.fsPath]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`Could not discard ${name}. ${message}`);
+    }
+  }
+
+  /** Takes a change back out of the index. Nothing is lost. */
+  async unstageChange(node: ChangeNode | undefined): Promise<void> {
+    if (!node) {
+      return;
+    }
+    const { change, repository } = node;
+    try {
+      await repository.revert([change.uri.fsPath]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(
+        `Could not unstage ${path.basename(change.uri.fsPath)}. ${message}`
+      );
+    }
+  }
+
   /** Opens the right-hand side of the diff for a change. */
-  async openChange(node: ChangeNode): Promise<void> {
+  async openChange(node: ChangeNode | undefined): Promise<void> {
+    if (!node) {
+      return;
+    }
     const { change, staged } = node;
     const name = path.basename(change.uri.fsPath);
 
