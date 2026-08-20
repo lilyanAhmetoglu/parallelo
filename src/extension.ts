@@ -73,7 +73,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Only on an actual switch. This runs on every git state change of the
     // active repository too, and re-selecting on each one would drag the
     // highlight back off whatever row the user had just arrowed onto.
-    if (!session) {
+    // A hidden session has no row to select. Asking anyway rejects with "Data
+    // tree node not found", and the catch below clears `revealed` so the next
+    // event tries again -- and this runs on every git state change of the
+    // active repository, so working in a hidden session would spin that retry
+    // continuously and fill the log with it.
+    if (!session || styles.isHidden(session)) {
       revealed = undefined;
     } else if (session.terminal !== revealed && sessionsView.visible) {
       revealed = session.terminal;
@@ -103,7 +108,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     status.show();
   };
 
+  // Gates the "Show Hidden Sessions" button. Without this the view title
+  // would carry a permanent button for a state almost nobody is ever in.
+  const syncHiddenContext = () => {
+    void vscode.commands.executeCommand(
+      'setContext',
+      'parallelo.hasHiddenSessions',
+      styles.hiddenAmong(tracker.allSessions).length > 0
+    );
+  };
+
   paint(tracker.activeSession);
+  syncHiddenContext();
   void styles.prune().then(() => styles.autoAssign(tracker.allSessions));
 
   context.subscriptions.push(
@@ -117,7 +133,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     styles,
     tracker.onDidChangeSession(paint),
     tracker.onDidChangeSessions(() => void styles.autoAssign(tracker.allSessions)),
+    tracker.onDidChangeSessions(syncHiddenContext),
     styles.onDidChange(() => paint(tracker.activeSession)),
+    styles.onDidChange(syncHiddenContext),
     vscode.workspace.onDidChangeConfiguration(event => {
       if (event.affectsConfiguration('parallelo.autoSessionColors')) {
         void styles.syncAutoColors(tracker.allSessions);
@@ -173,9 +191,60 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await styles.update(target, { pinned: undefined, order: undefined });
     }),
 
+    vscode.commands.registerCommand('parallelo.hideSession', async (session?: Session) => {
+      const target = session ?? tracker.activeSession;
+      if (!target) {
+        vscode.window.showInformationMessage('No session is active.');
+        return;
+      }
+      // Hiding is keyed by worktree, like every other bit of appearance, so a
+      // worktree with two terminals in it goes as one thing rather than
+      // leaving half of itself behind.
+      await styles.update(target, { hidden: true });
+      const undo = 'Show It Again';
+      void vscode.window
+        .showInformationMessage(
+          `${styles.title(target)} is hidden. Its terminal is still running.`,
+          undo
+        )
+        .then(
+          choice => {
+            if (choice === undo) {
+              void styles.update(target, { hidden: undefined });
+            }
+          },
+          () => {
+            // The window is going away.
+          }
+        );
+    }),
+
+    vscode.commands.registerCommand('parallelo.showHiddenSessions', async () => {
+      await styles.unhideAll();
+    }),
+
     vscode.commands.registerCommand('parallelo.quickSwitch', async () => {
-      const ordered = styles.arrange(tracker.allSessions);
+      // The same list the view shows. A hidden session appearing in the picker
+      // would be the row you just asked to stop seeing, offered back.
+      const live = styles.arrange(tracker.allSessions);
+      const ordered = live.filter(session => !styles.isHidden(session));
       if (!ordered.length) {
+        // Hiding the only session is the case this feature was built for, and
+        // the status bar still names it -- so saying nothing is running would
+        // contradict the thing that was just clicked to get here.
+        if (live.length) {
+          const show = 'Show Hidden Sessions';
+          const choice = await vscode.window.showInformationMessage(
+            live.length === 1
+              ? 'The only session is hidden. Its terminal is still running.'
+              : `All ${live.length} sessions are hidden. Their terminals are still running.`,
+            show
+          );
+          if (choice === show) {
+            await vscode.commands.executeCommand('parallelo.showHiddenSessions');
+          }
+          return;
+        }
         vscode.window.showInformationMessage(
           'No sessions are running. Start one from the Sessions view.'
         );

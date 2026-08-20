@@ -65,7 +65,11 @@ export class SessionsProvider
       return this.cached;
     }
 
-    const flat = this.styles.arrange(this.tracker.allSessions);
+    // Hidden rows come out before anything else looks at the list, so they
+    // take no part in the sections, the ordering or the drag arithmetic.
+    const flat = this.styles
+      .arrange(this.tracker.allSessions)
+      .filter(session => !this.styles.isHidden(session));
     const pinned = flat.filter(session => this.styles.get(session).pinned);
 
     // Both headings, or neither. With everything pinned there still has to be
