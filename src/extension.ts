@@ -8,6 +8,7 @@ import { newSession, removeWorktree } from './worktree';
 import type { Session } from './sessionTracker';
 import { SessionStyles, COLORS, ICONS } from './sessionStyles';
 import { StashGuard } from './stashGuard';
+import { ConflictRadar } from './conflictRadar';
 import { log, showLog, disposeLog } from './log';
 
 async function getGitApi(): Promise<GitAPI | undefined> {
@@ -32,7 +33,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const styles = new SessionStyles(context.globalState);
   const changes = new ChangesProvider(tracker, git, styles);
   const files = new FilesProvider(tracker);
-  const sessions = new SessionsProvider(tracker, styles);
+  const radar = new ConflictRadar(tracker, styles);
+  const sessions = new SessionsProvider(tracker, styles, radar);
   const stashGuard = new StashGuard(tracker);
 
   const changesView = vscode.window.createTreeView('worktreeSessions.changes', {
@@ -107,6 +109,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     tracker,
     stashGuard,
+    radar,
     changesView,
     filesView,
     sessionsView,
@@ -120,6 +123,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         void styles.syncAutoColors(tracker.allSessions);
       }
     }),
+
+    // The conflict mark on a session row. Registered rather than a view
+    // option because file decorations are window-wide.
+    vscode.window.registerFileDecorationProvider(radar),
 
     vscode.commands.registerCommand('parallelo.showLog', () => showLog()),
     new vscode.Disposable(() => disposeLog()),
@@ -214,6 +221,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
               head?.behind ? `\u2193${head.behind}` : '',
               shared ? session.terminal.name : '',
               dirty ? `${dirty} changed` : '',
+              // Worth knowing before you switch, not after -- and the picker
+              // is where you choose which session to go and look at.
+              radar.describe(session)?.summary ?? '',
               session.terminal === active?.terminal ? 'current' : ''
             ]
               .filter(Boolean)

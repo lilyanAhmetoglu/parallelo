@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { Session, SessionTracker } from './sessionTracker';
 import type { SessionStyles } from './sessionStyles';
+import { sessionUri, type ConflictRadar } from './conflictRadar';
 
 /**
  * A heading in the Sessions list.
@@ -38,11 +39,13 @@ export class SessionsProvider
 
   constructor(
     private readonly tracker: SessionTracker,
-    private readonly styles: SessionStyles
+    private readonly styles: SessionStyles,
+    private readonly radar: ConflictRadar
   ) {
     tracker.onDidChangeSessions(() => this.refresh());
     tracker.onDidChangeSession(() => this.refresh());
     styles.onDidChange(() => this.refresh());
+    radar.onDidChange(() => this.refresh());
   }
 
   refresh(): void {
@@ -158,7 +161,15 @@ export class SessionsProvider
       session.root !== undefined &&
       this.tracker.allSessions.filter(other => other.root === session.root).length > 1;
 
+    const conflict = this.radar.describe(session);
+
+    // The conflict goes first, and short. The description is truncated from
+    // the right, so a warning at the end is the first thing a narrow sidebar
+    // drops -- and it is the one part of the row that is news. The decoration
+    // on the resourceUri below carries the badge and the colour; this says
+    // which file, which is the part you cannot get from a badge.
     item.description = [
+      conflict?.mark ?? '',
       branch,
       shared ? session.terminal.name : '',
       dirty ? `${dirty} changed` : ''
@@ -169,6 +180,18 @@ export class SessionsProvider
       style.icon || (active ? 'circle-filled' : 'terminal'),
       style.color ? new vscode.ThemeColor(style.color) : undefined
     );
+    // What the conflict decoration hangs on. A scheme of our own, not the
+    // worktree path: a real directory uri would pick up the git extension's
+    // own decorations as well, and the session colour already lives on the
+    // icon -- this only ever carries the conflict mark.
+    // Keyed on the repository root, the same expression the radar keys its
+    // overlaps by. `session.root` is normally the same path, but it is found
+    // on disk rather than reported by git, and a row whose uri disagreed with
+    // the map would simply never light up.
+    const root = session.repository?.rootUri.fsPath ?? session.root;
+    if (root) {
+      item.resourceUri = sessionUri(root);
+    }
     item.tooltip = [
       style.name,
       session.cwd.fsPath,
@@ -181,7 +204,8 @@ export class SessionsProvider
         .filter(Boolean)
         .join(', '),
       shared ? `Terminal: ${session.terminal.name}` : '',
-      shared ? 'Another terminal is working in this same worktree.' : ''
+      shared ? 'Another terminal is working in this same worktree.' : '',
+      conflict?.tooltip ?? ''
     ]
       .filter(Boolean)
       .join('\n');

@@ -178,7 +178,7 @@ single most common way people lose the thread with a parallel agent.
 
 **Depends on §7 being settled.** This feature is built entirely on those URIs.
 
-### 4.3 Conflict radar — **M**
+### 4.3 Conflict radar — **M** — **DONE 2026-08-20** (`feat/conflict-radar`)
 
 **Problem.** Two sessions editing `auth.ts` at once. You find out at merge time.
 
@@ -186,6 +186,57 @@ single most common way people lose the thread with a parallel agent.
 tracked sessions — data we already hold, no scanning subsystem needed. Render as
 `⚠ 2 files also edited by test-b` in the row description, with the file list in
 the tooltip.
+
+Shipped as `src/conflictRadar.ts`, behind `parallelo.conflictRadar`. Unstaged,
+staged, untracked and merge changes all count — an agent that staged a file has
+still edited it, and a session mid-conflict on `auth.ts` is the one you least
+want a second agent walking into. Untracked files sit in `workingTreeChanges`
+only under the default `git.untrackedChanges: mixed`, so `untrackedChanges` is
+read as well; ignored files do not count.
+
+**The radar compares working trees, not branches.** Once an agent commits, its
+files leave the comparison — which is a real hole, because committing to the
+session branch is the advice the stash guard gives. The committed half belongs
+to §4.2: "everything this agent did since its baseline" is exactly what that
+feature computes, and its resettable baseline is also the answer to the noise
+problem a plain merge-base diff would create (a session branch forty commits
+deep would overlap with everything, permanently). **When §4.2 lands, feed its
+per-session file set into `editedFiles` here.** Until then the README says
+"uncommitted" and means it.
+
+Comparison is per worktree, not per session: two terminals in one worktree
+share a working tree and cannot collide, and the row already says another
+terminal is in there. Worktrees are grouped by `git rev-parse
+--git-common-dir` so only worktrees of one repository are ever compared —
+without that, two unrelated projects each holding a dirty `src/index.ts` read
+as a conflict. That call was already in `stashGuard`; it now lives in
+`src/gitCommonDir.ts` and both use it.
+
+The radar keeps a snapshot and fires only when the overlap actually changes.
+It recomputes on `onDidChangeSessions`, which the tracker fires on every git
+state change of every tracked repository — repainting the tree on each of those
+would drag the selection about for no new information.
+
+Naming lives in the radar rather than the view because three surfaces show it —
+the row, the decoration hover and the session picker — and a warning that named
+the worktree in one and the renamed session in another would not read as the
+same thing.
+
+**The mark is deliberately in three places, and each earns it.** The row
+description alone was the first version and it failed in practice: the
+description is truncated from the right, so at a normal sidebar width the
+warning was invisible. A `FileDecorationProvider` on a `parallelo-session:`
+uri fixes visibility — the colour lands on the name and the badge pins right —
+but a badge says only that *something* is wrong. The description then led with
+the filename, which was the second thing to fail in practice: `⚠ alpha.txt`
+reads as a filename, not as a warning — there is nothing in it that says what
+is wrong. So the row says `⚠ 2 conflicts`, which carries the meaning in the
+same space, and the hover names it and lists the files per worktree. Do not
+collapse these back into one; each covers a width the others do not.
+
+The hover says **possible** conflict. Nothing has conflicted yet — git will
+have no opinion until the branches meet — and naming a failure that has not
+happened is exactly what the copy rules forbid.
 
 ### 4.4 Shared-stash guard — **S** — **DONE 2026-08-18** (`feat/stash-guard-auto-colours`)
 

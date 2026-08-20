@@ -33,6 +33,14 @@ export interface RepositoryState {
   readonly workingTreeChanges: Change[];
   readonly indexChanges: Change[];
   readonly mergeChanges: Change[];
+  /**
+   * Untracked files, when `git.untrackedChanges` is `separate` or `hidden`.
+   *
+   * Optional on purpose: under the default `mixed` these sit in
+   * `workingTreeChanges` instead, and declaring it required would let a build
+   * against an older git extension read a property that is not there.
+   */
+  readonly untrackedChanges?: Change[];
   readonly onDidChange: Event<void>;
 }
 

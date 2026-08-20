@@ -1,11 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
 import type { SessionTracker } from './sessionTracker';
+import { commonDirFor } from './gitCommonDir';
 import { log, showLog } from './log';
-
-const run = promisify(execFile);
 
 /** `WIP on session/test-a: 1a2b3c4 subject`, or `On session/test-a: ...`. */
 const REFLOG_BRANCH = /^(?:WIP on|On) ([^:]+):/;
@@ -33,8 +30,6 @@ function branchOf(line: string | undefined): string | undefined {
  */
 export class StashGuard implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
-  /** Worktree root -> the common git dir shared by every worktree of its repo. */
-  private readonly commonDirs = new Map<string, string>();
   private readonly watchers = new Map<string, vscode.FileSystemWatcher>();
   /** One warning per repository per window, as promised. */
   private readonly warned = new Set<string>();
@@ -89,7 +84,7 @@ export class StashGuard implements vscode.Disposable {
           .filter((root): root is string => Boolean(root))
       );
       for (const root of roots) {
-        const common = await this.commonDirFor(root);
+        const common = await commonDirFor(root);
         if (common) {
           const sharing = worktrees.get(common);
           if (sharing) {
@@ -110,6 +105,10 @@ export class StashGuard implements vscode.Disposable {
         this.watch(common);
         await this.inspect(common, sharing);
       }
+    } catch (error) {
+      // Same reason as the radar: a rejection here would leave `again` latched
+      // true and run every later check twice, as an unhandled rejection.
+      log(`stash: check failed -- ${error}`);
     } finally {
       this.checking = false;
     }
@@ -117,32 +116,6 @@ export class StashGuard implements vscode.Disposable {
     if (this.again) {
       this.again = false;
       await this.check();
-    }
-  }
-
-  /**
-   * The `.git` directory shared by every worktree of this repository.
-   *
-   * A linked worktree's own `.git` is a file pointing into
-   * `<main>/.git/worktrees/<name>`, and `refs/stash` is not in there -- it is
-   * up in the common directory, which is the whole reason the stack is shared.
-   */
-  private async commonDirFor(root: string): Promise<string | undefined> {
-    const cached = this.commonDirs.get(root);
-    if (cached !== undefined) {
-      return cached || undefined;
-    }
-    try {
-      const { stdout } = await run('git', ['rev-parse', '--git-common-dir'], { cwd: root });
-      // Prints `.git` in a main checkout and an absolute path in a worktree.
-      const common = path.resolve(root, stdout.trim());
-      this.commonDirs.set(root, common);
-      return common;
-    } catch {
-      // Not a repository any more, or git is missing. Remember the failure so
-      // this does not respawn git on every session change.
-      this.commonDirs.set(root, '');
-      return undefined;
     }
   }
 
