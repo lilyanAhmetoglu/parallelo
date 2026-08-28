@@ -114,21 +114,22 @@ first time the stash is touched while more than one session is live. It is a
 warning only; the extension deliberately has no stash feature. Turn it off with
 `parallelo.stashGuard`.
 
-**The conflict radar compares uncommitted work, and only within one
-repository.** It intersects the changes VS Code already holds for each session
-— unstaged, staged, untracked and mid-merge — so there is nothing to scan and
-nothing to configure. Two limits are worth knowing:
+**The conflict radar compares work within one repository, committed and not.**
+It intersects the changes VS Code already holds for each session — unstaged,
+staged, untracked and mid-merge — with the commits that session has made since
+its branch began. Committing does not clear a warning, which matters: the agent
+worth warning about is the one making steady progress. Renames count under both
+names, since the old one is what the other session still calls the file.
 
-- **Once an agent commits, its files leave the comparison.** The radar sees the
-  working tree, not the branch, so two sessions that have both committed to
-  `auth.ts` will not be flagged. Committing to the session branch is still the
-  right thing to do — it is what keeps the shared stash out of trouble — but it
-  moves that work out of the radar's view.
-- **It knows about files, not about meaning.** Two sessions editing different
-  functions in one file are flagged; two sessions editing opposite ends of the
-  same API are not.
+Three things it leaves out on purpose. **Merges**, because a merge authors
+nothing and would drag in every file the branch it merged ever touched. **The
+main checkout**, because a `git pull` there brings hundreds of commits nobody in
+the window wrote. And **meaning**: two sessions editing different functions in
+one file are flagged, two sessions editing opposite ends of the same API are
+not.
 
-Turn it off with `parallelo.conflictRadar`.
+Turn it off with `parallelo.conflictRadar`, or drop back to uncommitted-only
+with `parallelo.sessionBaseline`.
 
 **Removing a session worktree discards uncommitted work.** The branch is kept,
 so anything an agent committed to it is safe and you can pick it up again with a
