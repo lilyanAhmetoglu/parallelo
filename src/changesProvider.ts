@@ -4,8 +4,9 @@ import type { API as GitAPI, Change, Repository } from './git';
 import { Status } from './status';
 import type { Session, SessionTracker } from './sessionTracker';
 import type { SessionStyles } from './sessionStyles';
+import type { BaselineCommit, BaselineFile, Baselines } from './baselines';
 
-type Node = GroupNode | ChangeNode;
+type Node = GroupNode | ChangeNode | CommitsNode | CommitNode | BaselineFileNode;
 
 interface GroupNode {
   kind: 'group';
@@ -30,6 +31,39 @@ interface ChangeNode {
   repository: Repository;
 }
 
+/**
+ * The session's own commits, newest first.
+ *
+ * Commits and not "everything changed since the session started". The first
+ * version was the latter and it read as a near-duplicate of the groups above:
+ * the same files again, differently ordered, under a heading that did not
+ * explain itself. What was actually missing from the view was the committed
+ * work, and a commit is the unit that work arrives in.
+ */
+interface CommitsNode {
+  kind: 'commits';
+  commits: BaselineCommit[];
+  sha: string;
+  /** Commits past the cap, counted but not listed. */
+  /** There are older commits than the ones listed. */
+  more: boolean;
+  /** The stamped commit is gone, so there is nothing to measure from. */
+  missing: boolean;
+}
+
+interface CommitNode {
+  kind: 'commit';
+  commit: BaselineCommit;
+}
+
+interface BaselineFileNode {
+  kind: 'baselineFile';
+  file: BaselineFile;
+  /** The commit this file was changed in. */
+  commit: BaselineCommit;
+  repository: Repository;
+}
+
 const LETTERS: Record<number, string> = {
   [Status.INDEX_MODIFIED]: 'M',
   [Status.INDEX_ADDED]: 'A',
@@ -43,6 +77,28 @@ const LETTERS: Record<number, string> = {
   [Status.INTENT_TO_ADD]: 'A',
   [Status.BOTH_MODIFIED]: '!'
 };
+
+/**
+ * How long ago, short enough for a tree row's description.
+ *
+ * Rounded down and never more than one unit: the row says roughly when, and
+ * the exact timestamp is in the tooltip for anyone who needs it.
+ */
+function ago(at: number): string {
+  const seconds = Math.max(0, Math.round((Date.now() - at) / 1000));
+  if (seconds < 60) {
+    return 'just now';
+  }
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+  return `${Math.floor(hours / 24)}d ago`;
+}
 
 const COLORS: Record<string, string> = {
   M: 'gitDecoration.modifiedResourceForeground',
@@ -62,10 +118,12 @@ export class ChangesProvider implements vscode.TreeDataProvider<Node> {
   constructor(
     private readonly tracker: SessionTracker,
     private readonly git: GitAPI,
-    private readonly styles: SessionStyles
+    private readonly styles: SessionStyles,
+    private readonly baselines: Baselines
   ) {
     tracker.onDidChangeSession(() => this._onDidChangeTreeData.fire());
     styles.onDidChange(() => this._onDidChangeTreeData.fire());
+    baselines.onDidChange(() => this._onDidChangeTreeData.fire());
   }
 
   refresh(): void {
@@ -81,10 +139,10 @@ export class ChangesProvider implements vscode.TreeDataProvider<Node> {
     return `Changes \u2014 ${this.styles.title(session)} (${branch})`;
   }
 
-  getChildren(element?: Node): Node[] {
+  getChildren(element?: Node): Node[] | Promise<Node[]> {
     const session = this.tracker.activeSession;
     const repository = session?.repository;
-    if (!repository) {
+    if (!repository || !session) {
       return [];
     }
 
@@ -117,6 +175,26 @@ export class ChangesProvider implements vscode.TreeDataProvider<Node> {
       if (untracked.length) {
         groups.push({ kind: 'group', label: 'Untracked', staged: false, changes: untracked });
       }
+
+      // Last, and collapsed. The groups above are this session's uncommitted
+      // work and this is the committed half, so it is the part of the answer
+      // that was missing rather than a second copy of the part that was not.
+      // Synchronous. A miss starts the read and brings the view back through
+      // `onDidChange`, rather than holding the groups above -- which are the
+      // point of the view -- behind a git subprocess.
+      const baseline = this.baselines.snapshot(session);
+      if (baseline && (baseline.commits.length || baseline.missing)) {
+        return [
+          ...groups,
+          {
+            kind: 'commits' as const,
+            commits: baseline.commits,
+            sha: baseline.sha,
+            more: baseline.more,
+            missing: baseline.missing
+          }
+        ];
+      }
       return groups;
     }
 
@@ -128,6 +206,27 @@ export class ChangesProvider implements vscode.TreeDataProvider<Node> {
         merge: element.merge,
         repository
       }));
+    }
+
+    if (element.kind === 'commits') {
+      return element.commits.map(commit => ({ kind: 'commit' as const, commit }));
+    }
+
+    if (element.kind === 'commit') {
+      // Fetched here rather than up front: this is one git command for the one
+      // commit somebody opened, instead of a hundred for the ninety-nine they
+      // did not.
+      const commit = element.commit;
+      return this.baselines
+        .filesIn(repository.rootUri.fsPath, commit.sha)
+        .then(files =>
+          files.map(file => ({
+            kind: 'baselineFile' as const,
+            file,
+            commit,
+            repository
+          }))
+        );
     }
 
     return [];
@@ -142,6 +241,18 @@ export class ChangesProvider implements vscode.TreeDataProvider<Node> {
       item.description = String(node.changes.length);
       item.contextValue = 'group';
       return item;
+    }
+
+    if (node.kind === 'commits') {
+      return this.commitsItem(node);
+    }
+
+    if (node.kind === 'commit') {
+      return this.commitItem(node);
+    }
+
+    if (node.kind === 'baselineFile') {
+      return this.baselineFileItem(node);
     }
 
     const uri = node.change.uri;
@@ -258,9 +369,148 @@ export class ChangesProvider implements vscode.TreeDataProvider<Node> {
     }
   }
 
+  private commitsItem(node: CommitsNode): vscode.TreeItem {
+    const item = new vscode.TreeItem(
+      'Session commits',
+      node.missing
+        ? vscode.TreeItemCollapsibleState.None
+        : vscode.TreeItemCollapsibleState.Collapsed
+    );
+
+    if (node.missing) {
+      // Not an error. A hard reset, or a worktree remade under the same path,
+      // leaves a stamp pointing at nothing, and the only useful thing to say
+      // is what to do about it.
+      item.description = 'starting commit is gone';
+      item.tooltip = new vscode.MarkdownString(
+        `The commit this session started from (\`${node.sha.slice(0, 8)}\`) is no longer ` +
+          'in the repository, so there is nothing to measure from.\n\n' +
+          'Use **Reset Session Baseline to Now** on this row to start again from here.'
+      );
+      item.iconPath = new vscode.ThemeIcon('warning');
+      // No `command`. TreeItem.command fires on selection, so arrow-keying on
+      // to this row to read the tooltip would silently overwrite the stamp,
+      // and the old one is not recoverable. The inline button is the way.
+      item.contextValue = 'commitsMissing';
+      return item;
+    }
+
+    const count = node.commits.length;
+    item.description = node.more
+      ? `${count}+ commits`
+      : `${count} commit${count === 1 ? '' : 's'}`;
+    item.tooltip = new vscode.MarkdownString(
+      `Commits made in this worktree since the session started at ` +
+        `\`${node.sha.slice(0, 8)}\`.\n\n` +
+        (node.more ? 'Older commits are not listed.\n\n' : '') +
+        'Uncommitted work is in the groups above.'
+    );
+    item.iconPath = new vscode.ThemeIcon('git-commit');
+    item.contextValue = 'commits';
+    return item;
+  }
+
+  private commitItem(node: CommitNode): vscode.TreeItem {
+    const { commit } = node;
+    // A merge has no files of its own -- `diff-tree` prints nothing for one --
+    // so it does not open. Everything else does, and its files are fetched
+    // then. There is no count up front and that is the trade: one git command
+    // per commit somebody actually opens.
+    const item = new vscode.TreeItem(
+      commit.subject,
+      commit.merge
+        ? vscode.TreeItemCollapsibleState.None
+        : vscode.TreeItemCollapsibleState.Collapsed
+    );
+    item.id = `commit:${commit.sha}`;
+    item.description = `${commit.sha.slice(0, 7)} \u00b7 ${ago(commit.at)}`;
+    item.tooltip = new vscode.MarkdownString(
+      `${commit.subject}\n\n\`${commit.sha.slice(0, 8)}\` \u2014 ${commit.author}, ` +
+        `${new Date(commit.at).toLocaleString()}` +
+        (commit.merge
+          ? '\n\nA merge. It lists no files of its own \u2014 they belong to the ' +
+            'commits on the branch it merged.'
+          : '')
+    );
+    item.iconPath = new vscode.ThemeIcon(commit.merge ? 'git-merge' : 'git-commit');
+    item.contextValue = 'commit';
+    return item;
+  }
+
+  private baselineFileItem(node: BaselineFileNode): vscode.TreeItem {
+    const { file } = node;
+    const item = new vscode.TreeItem(file.uri, vscode.TreeItemCollapsibleState.None);
+    item.label = path.basename(file.path);
+
+    const dir = path.dirname(file.path);
+    // A rename says where it came from, which is more use in the row than the
+    // directory it now sits in.
+    item.description = file.from ? `\u2190 ${file.from}` : dir === '.' ? '' : dir;
+    item.resourceUri = file.uri;
+    item.contextValue = 'baselineFile';
+    item.tooltip = `${file.path} \u2014 ${file.letter}`;
+    item.iconPath = new vscode.ThemeIcon(
+      'circle-filled',
+      new vscode.ThemeColor(COLORS[file.letter] ?? 'foreground')
+    );
+    item.command = {
+      command: 'parallelo.openChange',
+      title: 'Open Change',
+      arguments: [node]
+    };
+    return item;
+  }
+
+  /**
+   * Diffs one file across the commit it was changed in.
+   *
+   * The same URI mechanism as `openChange`, with the commit's parent on the
+   * left and the commit itself on the right, so the diff is what that commit
+   * did rather than everything that has happened since. A file added by the
+   * commit has no left-hand side, a deleted one has no right-hand side, and
+   * the repository's first commit has no parent at all -- each of those opens
+   * the one side that exists rather than a diff against nothing.
+   */
+  private async openBaselineChange(node: BaselineFileNode): Promise<void> {
+    const { file, commit } = node;
+    const name = path.basename(file.path);
+    const right = this.git.toGitUri(file.uri, commit.sha);
+
+    if (file.letter === 'A' || !commit.parent) {
+      await vscode.commands.executeCommand('vscode.open', right);
+      return;
+    }
+
+    try {
+      // A rename did not exist under its new name in the parent, so the left
+      // side has to be the old path or the diff shows the whole file as added.
+      const before = file.from
+        ? vscode.Uri.file(path.join(node.repository.rootUri.fsPath, file.from))
+        : file.uri;
+      const left = this.git.toGitUri(before, commit.parent);
+
+      if (file.letter === 'D') {
+        await vscode.commands.executeCommand('vscode.open', left);
+        return;
+      }
+      await vscode.commands.executeCommand(
+        'vscode.diff',
+        left,
+        right,
+        `${name} (${commit.sha.slice(0, 7)})`
+      );
+    } catch {
+      await vscode.commands.executeCommand('vscode.open', file.uri);
+    }
+  }
+
   /** Opens the right-hand side of the diff for a change. */
-  async openChange(node: ChangeNode | undefined): Promise<void> {
+  async openChange(node: ChangeNode | BaselineFileNode | undefined): Promise<void> {
     if (!node) {
+      return;
+    }
+    if (node.kind === 'baselineFile') {
+      await this.openBaselineChange(node);
       return;
     }
     const { change, staged } = node;
@@ -286,4 +536,4 @@ export class ChangesProvider implements vscode.TreeDataProvider<Node> {
   }
 }
 
-export type { ChangeNode };
+export type { ChangeNode, BaselineFileNode };
