@@ -3,6 +3,19 @@
 ## [Unreleased]
 
 ### Added
+- **Conflict radar.** A session with uncommitted edits to a file another
+  session of the same repository has also edited is marked on its row three
+  ways, so none of it depends on the sidebar being wide: the session name takes
+  the conflict colour and a `⚠` badge pins to the right edge — the mechanism
+  git uses for modified files in the Explorer — and the description leads with
+  `⚠ 2 conflicts`. The hover names it and lists which files, per worktree, and
+  the session picker carries the full sentence, `⚠ 2 files also edited by
+  test-b`. Worktrees isolate files, so neither agent
+  can tell the other one is in `auth.ts` as well. Covers unstaged, staged,
+  untracked and mid-merge files; work that has already been committed to a
+  session branch is not compared. Reads what the git extension already holds
+  for each session, so there is nothing to scan. Off with
+  `parallelo.conflictRadar`.
 - Ahead and behind counts on each session row, next to the change count, so a
   session that has drifted from its upstream says so without opening anything.
   Shown only when there is something to show: a branch with no upstream, or one

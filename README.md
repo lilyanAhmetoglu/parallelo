@@ -26,6 +26,12 @@ process in the terminal is the only contract.**
   sessions into it to pin them and out of it to unpin, so the section boundary
   and the pin are the same thing. The headings only appear while something is
   pinned.
+- **Conflict radar** — a session with *uncommitted* edits to a file another
+  session has also edited uncommitted is marked on its row three ways, so it
+  reads at any sidebar width: the name takes the conflict colour, a `⚠` badge
+  pins to the right edge, and the row leads with `⚠ 2 conflicts`. Hover for
+  which files and who else is in them. Worktrees isolate
+  files, so neither agent can see the other one is in `auth.ts` too.
 - **Delete Worktree** (bin) — deletes the worktree directory. The branch is kept,
   uncommitted changes are not. It always asks first, and tells you how many files
   are at stake. To make a session go away without deleting anything, close its
@@ -87,6 +93,22 @@ first time the stash is touched while more than one session is live. It is a
 warning only; the extension deliberately has no stash feature. Turn it off with
 `parallelo.stashGuard`.
 
+**The conflict radar compares uncommitted work, and only within one
+repository.** It intersects the changes VS Code already holds for each session
+— unstaged, staged, untracked and mid-merge — so there is nothing to scan and
+nothing to configure. Two limits are worth knowing:
+
+- **Once an agent commits, its files leave the comparison.** The radar sees the
+  working tree, not the branch, so two sessions that have both committed to
+  `auth.ts` will not be flagged. Committing to the session branch is still the
+  right thing to do — it is what keeps the shared stash out of trouble — but it
+  moves that work out of the radar's view.
+- **It knows about files, not about meaning.** Two sessions editing different
+  functions in one file are flagged; two sessions editing opposite ends of the
+  same API are not.
+
+Turn it off with `parallelo.conflictRadar`.
+
 **Removing a session worktree discards uncommitted work.** The branch is kept,
 so anything an agent committed to it is safe and you can pick it up again with a
 new worktree. Anything still sitting in the working tree is not on any branch and
@@ -115,6 +137,7 @@ appear.
 | `parallelo.followProcessCwd` | `true` | Resolve the worktree from the terminal's processes, not just the shell |
 | `parallelo.autoSessionColors` | `true` | Give each session a distinct colour automatically |
 | `parallelo.stashGuard` | `true` | Warn when the shared stash is used with more than one session live |
+| `parallelo.conflictRadar` | `true` | Mark sessions editing the same file as another session |
 | `parallelo.setupCommand` | — | Command run once in a new worktree before the agent starts |
 | `parallelo.copyFiles` | `.env`, `.env.local` | Untracked files copied into each new worktree |
 | `parallelo.showStatusBar` | `true` | Show the active session's branch in the status bar |
