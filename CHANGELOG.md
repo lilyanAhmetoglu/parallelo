@@ -95,6 +95,34 @@
   there is something to discard.
 
 ### Fixed
+- A directory whose `.git` exists but is unusable no longer resolves as a
+  session. Only a stat was done, so a `.git` with its `HEAD` deleted — which is
+  what temp cleanup does to a repository under `/tmp` — bound a session, listed
+  a row, and made every git call against it fail. The walk now checks that the
+  git directory has a `HEAD`, following the pointer for a linked worktree or
+  submodule, and keeps walking up so a broken `.git` nested in a healthy
+  checkout finds the healthy parent.
+- Starting a worktree session in a folder with no git offers to create one
+  instead of passing git's "not a git repository" through raw. Someone opening
+  a fresh codebase gets one prompt with **Initialize Repository** on it, not
+  the same error over and over. It asks rather than doing it, because a
+  repository appearing in a folder is a real change on disk, and it is asked
+  only when a session is started. `git init` writes what is missing and leaves
+  any existing objects alone, so the same offer covers a `.git` git cannot
+  read; the wording is chosen from what is actually on disk rather than from
+  how git failed.
+- `Stage All Changes in Session` stages untracked files and resolved merge
+  conflicts, not only the working tree. Under `git.untrackedChanges: separate`
+  a session whose work was all new files reported nothing to stage while the
+  view listed them.
+- The change count on a session row, in the status bar and in the session
+  picker counts what the Changes view lists. All three had their own copy of
+  the arithmetic and all three disagreed with the view.
+- The conflict radar ignores hidden sessions. It could name one as the other
+  half of a conflict, pointing at a row that is not in the view or the picker.
+- A symlinked `.git` is read as a file rather than a directory. `FileType` is a
+  bitmask, so a symlink to a file reports `File | SymbolicLink` and an equality
+  test missed it — losing the worktree's Delete Worktree action.
 - The Changes view lists untracked files under `git.untrackedChanges` set to
   `separate` or `hidden`. They are in a group of their own there rather than in
   the working tree, so reading one group dropped them from the view entirely.

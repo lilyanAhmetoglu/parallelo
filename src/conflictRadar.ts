@@ -289,7 +289,10 @@ export class ConflictRadar implements vscode.Disposable, vscode.FileDecorationPr
     // git race, and the row already says another terminal is in there.
     const worktrees = new Map<string, Repository>();
     for (const session of this.tracker.allSessions) {
-      if (session.repository) {
+      // A hidden session has no row and no entry in the picker, so naming it
+      // as the other half of a conflict points at something the user cannot
+      // see or switch to. Hidden means hidden.
+      if (session.repository && !this.styles.isHidden(session)) {
         worktrees.set(session.repository.rootUri.fsPath, session.repository);
       }
     }

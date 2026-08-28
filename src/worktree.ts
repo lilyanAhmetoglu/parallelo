@@ -69,7 +69,7 @@ async function mainCheckoutOf(worktreeRoot: string): Promise<string | undefined>
 async function baseRepoRoot(
   gitApi: GitAPI,
   tracker: SessionTracker
-): Promise<string | undefined> {
+): Promise<{ root: string } | { damaged: string } | undefined> {
   const candidate =
     tracker.activeSession?.root ??
     tracker.activeSession?.repository?.rootUri.fsPath ??
@@ -77,16 +77,145 @@ async function baseRepoRoot(
   if (!candidate) {
     return undefined;
   }
-  return (await mainCheckoutOf(candidate)) ?? candidate;
+
+  // Ask git before building anything on this path. A `.git` that git rejects
+  // -- one whose HEAD has been deleted, which is what temp cleanup does to a
+  // repository under /tmp -- used to get all the way to `git branch --list`
+  // and report "not a git repository" as though the user had typed it.
+  if (!(await isRepository(candidate))) {
+    return { damaged: candidate };
+  }
+
+  const main = (await mainCheckoutOf(candidate)) ?? candidate;
+  // The main checkout is a different path, so it is worth the same question.
+  return (await isRepository(main)) ? { root: main } : { damaged: main };
+}
+
+/**
+ * Makes a repository where there is none, so starting a session just works.
+ *
+ * A folder that is not a repository is not an error worth stopping for: `git
+ * init` is what anyone would do next, and refusing until they do it by hand
+ * only moves the same work somewhere less convenient. Someone opening a fresh
+ * codebase should be offered the fix, not told the same thing repeatedly.
+ *
+ * Asked rather than done, because a git repository appearing in a folder is a
+ * real change to what is on disk. Modal because the session they just asked
+ * for cannot continue until this is answered -- and it is asked only when they
+ * start a session, never on a timer.
+ *
+ * `init` creates nothing it can destroy: it writes the files a git directory
+ * is missing and leaves any objects alone, so it is also the right answer for
+ * a `.git` git currently refuses, where it reinitialises rather than replaces.
+ *
+ * Modern git infers `--orphan` when adding a worktree to a repository with no
+ * commits, so there is no need to manufacture an initial commit here.
+ */
+async function initRepository(
+  gitApi: GitAPI,
+  tracker: SessionTracker,
+  damaged: string | undefined
+): Promise<string | undefined> {
+  const fallback = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  let target =
+    damaged ??
+    tracker.activeSession?.root ??
+    tracker.activeSession?.cwd.fsPath ??
+    fallback;
+
+  // git failing here does not have to mean the repository is broken -- the
+  // directory may simply be gone, which is what a worktree removed from
+  // another terminal looks like while its row is still listed. Offering to
+  // initialise a path that no longer exists would recreate it as a side
+  // effect, so fall back to the folder that is actually open.
+  if (target && !(await pathExists(target))) {
+    target = fallback;
+  }
+
+  if (!target) {
+    // Nothing open and no terminal to take a directory from. There is no
+    // sensible place to put a repository, and guessing one would be worse.
+    vscode.window.showErrorMessage(
+      'Open a folder before starting a session, so there is somewhere to put it.'
+    );
+    return undefined;
+  }
+
+  // What to say is decided by what is on disk, not by how git failed. A
+  // missing repository and an unreadable one need different sentences, and
+  // `git rev-parse` failing does not say which it was.
+  const unreadable = await pathExists(path.join(target, '.git'));
+
+  const start = 'Initialize Repository';
+  const chosen = await vscode.window.showInformationMessage(
+    unreadable
+      ? `${path.basename(target)} has a .git that git cannot read.`
+      : `${path.basename(target)} is not a git repository yet.`,
+    {
+      modal: true,
+      detail: unreadable
+        ? 'Parallelo needs a working repository to branch a session from. ' +
+          'Initializing writes the files the git directory is missing and leaves ' +
+          'anything already stored there alone.'
+        : 'Parallelo needs a repository to branch a session from. This runs ' +
+          'git init here. Nothing is committed and none of your files change.'
+    },
+    start
+  );
+  if (chosen !== start) {
+    return undefined;
+  }
+
+  try {
+    await git(target, ['init']);
+  } catch (error) {
+    vscode.window.showErrorMessage(
+      `Could not start a git repository in ${path.basename(target)}. ${clean(
+        error instanceof Error ? error.message : String(error)
+      )}`
+    );
+    return undefined;
+  }
+
+  // Register it, or the Changes view has nothing to read until something else
+  // makes the git extension notice the new repository.
+  try {
+    await gitApi.openRepository(vscode.Uri.file(target));
+  } catch {
+    // It will be picked up on the next scan.
+  }
+
+  return target;
+}
+
+async function pathExists(target: string): Promise<boolean> {
+  try {
+    await vscode.workspace.fs.stat(vscode.Uri.file(target));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Whether git will work in this directory at all. */
+async function isRepository(dir: string): Promise<boolean> {
+  try {
+    return (await git(dir, ['rev-parse', '--is-inside-work-tree'])) === 'true';
+  } catch {
+    return false;
+  }
 }
 
 export async function newSession(
   gitApi: GitAPI,
   tracker: SessionTracker
 ): Promise<void> {
-  const base = await baseRepoRoot(gitApi, tracker);
+  const located = await baseRepoRoot(gitApi, tracker);
+  const base =
+    located && 'root' in located
+      ? located.root
+      : await initRepository(gitApi, tracker, located?.damaged);
   if (!base) {
-    vscode.window.showErrorMessage('Open a git repository to start a session.');
     return;
   }
 
