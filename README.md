@@ -19,6 +19,14 @@ process in the terminal is the only contract.**
   staged one back out of the index. Discarding always asks first, and says
   which of the two things it is about to do: a modified file is restored from
   the index, an untracked one is deleted outright.
+- **Session commits** — the last group in the Changes view: what this session
+  has committed since its branch left the integration branch (`origin/HEAD`,
+  `main` or `master`, whichever exists — or `parallelo.baselineBranch`), one
+  row per commit,
+  labelled with its message and holding the files it touched. The groups above lose a file the moment the
+  agent commits it, which is exactly when you most want to see what it did.
+  Click a file for the diff across that commit. **Reset Session Baseline to
+  Now** re-arms the group after you have reviewed.
 - **Files** — a file tree rooted at that worktree, so you browse the branch you
   are actually on.
 - **Every worktree is there from the start** — when the window opens, Parallelo
@@ -37,12 +45,14 @@ process in the terminal is the only contract.**
   sessions into it to pin them and out of it to unpin, so the section boundary
   and the pin are the same thing. The headings only appear while something is
   pinned.
-- **Conflict radar** — a session with *uncommitted* edits to a file another
-  session has also edited uncommitted is marked on its row three ways, so it
-  reads at any sidebar width: the name takes the conflict colour, a `⚠` badge
-  pins to the right edge, and the row leads with `⚠ 2 conflicts`. Hover for
-  which files and who else is in them. Worktrees isolate
-  files, so neither agent can see the other one is in `auth.ts` too.
+- **Conflict radar** — a session that has edited a file another session has
+  also edited *since either of them started* is marked on its row three ways,
+  so it reads at any sidebar width: the name takes the conflict colour, a `⚠`
+  badge pins to the right edge, and the row leads with `⚠ 2 conflicts`. Hover
+  for which files and who else is in them. Committing does not clear the
+  warning — a session's own commits count too, the old name of a renamed file
+  included. Worktrees isolate files, so
+  neither agent can see the other one is in `auth.ts` too.
 - **Delete Worktree** (bin) — deletes the worktree directory. The branch is kept,
   uncommitted changes are not. It always asks first, and tells you how many files
   are at stake. To make a session go away without deleting anything, close its
@@ -149,6 +159,8 @@ appear.
 | `parallelo.autoSessionColors` | `true` | Give each session a distinct colour automatically |
 | `parallelo.stashGuard` | `true` | Warn when the shared stash is used with more than one session live |
 | `parallelo.conflictRadar` | `true` | Mark sessions editing the same file as another session |
+| `parallelo.sessionBaseline` | `true` | List each session's own commits, and count them in the conflict radar |
+| `parallelo.baselineBranch` | — | Branch a session is taken to have branched from; empty means `origin/HEAD`, `main`, then `master` |
 | `parallelo.setupCommand` | — | Command run once in a new worktree before the agent starts |
 | `parallelo.copyFiles` | `.env`, `.env.local` | Untracked files copied into each new worktree |
 | `parallelo.showStatusBar` | `true` | Show the active session's branch in the status bar |

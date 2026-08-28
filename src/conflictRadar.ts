@@ -4,6 +4,7 @@ import type { Repository } from './git';
 import { Status } from './status';
 import { isListed, type Session, type SessionTracker } from './sessionTracker';
 import type { SessionStyles } from './sessionStyles';
+import type { Baselines } from './baselines';
 import { commonDirFor } from './gitCommonDir';
 import { log } from './log';
 
@@ -59,7 +60,11 @@ function editedFiles(repository: Repository): Set<string> {
     if (change.status === Status.IGNORED) {
       continue;
     }
-    files.add(path.relative(root, change.uri.fsPath));
+    // git speaks in forward slashes everywhere, including on Windows, and the
+    // baseline's paths come straight from git. `path.relative` does not, so
+    // without this the same file arrives twice under two spellings and one
+    // shared file reads as two conflicts.
+    files.add(path.relative(root, change.uri.fsPath).split(path.sep).join('/'));
   }
   return files;
 }
@@ -84,9 +89,13 @@ function signature(overlaps: Map<string, Overlap>): string {
  * them -- and it means neither agent, and neither git, has any idea the other
  * one is in `auth.ts` as well. You find out when you merge.
  *
- * There is no scanning subsystem here: the working tree changes of every
- * session are already held by the git extension, so this is set intersection
- * over data the Sessions view is redrawing from anyway.
+ * The comparison runs from each session's baseline, not from its working
+ * tree, so a file does not leave it the moment an agent commits. That hole was
+ * the radar's known weakness: the agent most worth warning about is the one
+ * making steady commits, and it was the one that disappeared from the
+ * comparison fastest. Working tree changes are still unioned in, because a
+ * worktree seen for the first time has a baseline of its own HEAD and nothing
+ * committed since.
  */
 export class ConflictRadar implements vscode.Disposable, vscode.FileDecorationProvider {
   private readonly disposables: vscode.Disposable[] = [];
@@ -105,7 +114,8 @@ export class ConflictRadar implements vscode.Disposable, vscode.FileDecorationPr
 
   constructor(
     private readonly tracker: SessionTracker,
-    private readonly styles: SessionStyles
+    private readonly styles: SessionStyles,
+    private readonly baselines: Baselines
   ) {
     this.disposables.push(
       // Fires on terminal changes and on any git state change in a tracked
@@ -240,6 +250,11 @@ export class ConflictRadar implements vscode.Disposable, vscode.FileDecorationPr
       .get<boolean>('conflictRadar', true);
   }
 
+  /** Recompute now. For a setting change that alters what counts as edited. */
+  rescan(): void {
+    void this.scan();
+  }
+
   private async scan(): Promise<void> {
     if (this.scanning) {
       // Resolving a common directory spawns git, so a burst of session events
@@ -283,16 +298,49 @@ export class ConflictRadar implements vscode.Disposable, vscode.FileDecorationPr
     }
   }
 
+  /**
+   * Everything this session has touched since it started.
+   *
+   * The baseline half is what keeps a committed file in the comparison; the
+   * working tree half covers the moments the baseline cannot -- a session
+   * stamped seconds ago, or one whose starting commit has gone and whose
+   * baseline reads as missing. Neither is a superset of the other in every
+   * state, so both are read.
+   */
+  private async touchedIn(entry: {
+    repository: Repository;
+    session: Session;
+  }): Promise<Set<string>> {
+    const files = editedFiles(entry.repository);
+
+    // Linked worktrees only. The main checkout is where `git pull` happens,
+    // and every commit a pull brings in is a commit made here since this
+    // session started -- two hundred files that nobody in this window wrote,
+    // flagged against every worktree that has touched any of them.
+    if (entry.session.linked !== true) {
+      return files;
+    }
+
+    const baseline = await this.baselines.read(entry.session);
+    for (const file of baseline?.files ?? []) {
+      files.add(file);
+    }
+    return files;
+  }
+
   private async compute(): Promise<Map<string, Overlap>> {
     // One entry per worktree. Two terminals in the same worktree share a
     // working tree, so they cannot collide with each other -- that is a plain
     // git race, and the row already says another terminal is in there.
-    const worktrees = new Map<string, Repository>();
+    const worktrees = new Map<string, { repository: Repository; session: Session }>();
     for (const session of this.tracker.allSessions) {
       // A session with no row is one the user cannot see or switch to, so
       // naming it as the other half of a conflict points at nothing.
       if (session.repository && isListed(session)) {
-        worktrees.set(session.repository.rootUri.fsPath, session.repository);
+        worktrees.set(session.repository.rootUri.fsPath, {
+          repository: session.repository,
+          session
+        });
       }
     }
     if (worktrees.size < 2) {
@@ -321,7 +369,17 @@ export class ConflictRadar implements vscode.Disposable, vscode.FileDecorationPr
         continue;
       }
       const edited = new Map(
-        roots.map(root => [root, editedFiles(worktrees.get(root) as Repository)])
+        await Promise.all(
+          roots.map(
+            async root =>
+              [
+                root,
+                await this.touchedIn(
+                  worktrees.get(root) as { repository: Repository; session: Session }
+                )
+              ] as const
+          )
+        )
       );
 
       for (const root of roots) {

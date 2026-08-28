@@ -106,6 +106,12 @@
         "icon": "$(remove)"
       },
       {
+        "command": "parallelo.resetBaseline",
+        "title": "Reset Session Baseline to Now",
+        "category": "Parallelo Session",
+        "icon": "$(history)"
+      },
+      {
         "command": "parallelo.stageAll",
         "title": "Stage All Changes in Session",
         "category": "Parallelo Session",
@@ -290,6 +296,11 @@
           "command": "parallelo.unstageChange",
           "when": "view == worktreeSessions.changes && viewItem == stagedChange",
           "group": "1_change@1"
+        },
+        {
+          "command": "parallelo.resetBaseline",
+          "when": "view == worktreeSessions.changes && viewItem =~ /^commits(Missing)?$/",
+          "group": "inline@1"
         }
       ],
       "commandPalette": [
@@ -411,6 +422,16 @@
           "type": "boolean",
           "default": true,
           "description": "Open a terminal in every worktree of the repository when the window starts, so each one appears in the Sessions list without being visited first. Worktrees that already have a terminal are left alone."
+        },
+        "parallelo.sessionBaseline": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show what each session has changed since it started, including work it has already committed, and count it in the conflict radar."
+        },
+        "parallelo.baselineBranch": {
+          "type": "string",
+          "default": "",
+          "description": "Branch a session is considered to have branched from, for the Session commits group. Leave empty to use origin/HEAD, then main, then master. Set it for a repository that integrates into something else, such as develop."
         }
       }
     }

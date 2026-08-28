@@ -3,6 +3,62 @@
 ## [Unreleased]
 
 ### Added
+- **Session commits.** The Changes view shows uncommitted work only, so an
+  agent that has been running twenty minutes and committed three times looks
+  idle — its output left the view the moment it was committed, which is the
+  most common way of losing the thread with a parallel agent. Parallelo now
+  marks where each worktree's branch left the main checkout's branch, and a
+  **Session commits** group lists what it has committed since: one row per
+  commit, labelled with its message and carrying the files it touched. Click a
+  file for the diff across that commit — its parent on the left, the commit
+  itself on the right — so you see what that commit did rather than everything
+  that has happened since.
+
+  Commits, not "everything changed since the session started". The first
+  version was that flat list and it read as a confusing near-duplicate of the
+  groups above: the same files again, differently ordered, under a heading that
+  did not explain itself. The committed half is what was missing from the view,
+  and a commit is the unit the work arrives in.
+
+  The mark is where the branch left the integration branch — `origin/HEAD`, or
+  `main`, or `master`, whichever the repository has, or whatever
+  **`parallelo.baselineBranch`** names for a repository that integrates into
+  something else — rather than wherever HEAD
+  happened to be when the worktree was first seen. Stamping HEAD looked
+  reasonable and was wrong in the most ordinary case there is: a worktree with
+  work already committed put all of it behind the mark, so the group showed
+  nothing and read as broken. Anchoring instead to whatever branch the main
+  *worktree* was on was wrong in a quieter way — checking out a feature branch
+  there moved the origin of every session stamped afterwards.
+
+  A repository with none of those — no remote, no `main`, no `master`, which
+  is every repository that has just been started — marks the beginning of
+  history instead. There is nothing to have branched from, so everything on the
+  branch is the session's work. Falling back to HEAD there reintroduced the
+  original bug in the one place nobody would look for it.
+
+  A commit's files are read when its row is opened, not up front. Reading them
+  all in advance meant one `git diff-tree` per commit for every worktree at
+  once, which is enough concurrent processes to start failing outright.
+
+  Merges are marked and read differently, because their files came from the
+  branch they merged rather than from this session. **Reset Session Baseline to
+  Now** re-arms the group after a review. If the starting commit is gone — a
+  hard reset, or a worktree remade under the same path — the group says so and
+  offers the reset instead of reporting an error, because nothing is wrong.
+- **The conflict radar no longer forgets a committed file.** It compared
+  uncommitted work, so a file left the comparison the moment an agent committed
+  it: the agent most worth warning about, the one making steady commits, was
+  the one that disappeared fastest. It now counts a session's own commits too,
+  including the *old* name of a renamed file, which is the name another session
+  still knows it by and a guaranteed conflict the previous version could not
+  see. Merges are excluded, and so is the main checkout — a `git pull` brings
+  hundreds of commits nobody in this window wrote, and counting them would flag
+  every worktree against every other one.
+- **`parallelo.sessionBaseline`**, on by default. Turns both of the above off.
+  Only reading is gated; stamping carries on, so switching it back on measures
+  from where the session actually started rather than from where the setting
+  changed.
 - **Every worktree opens with a terminal.** The Sessions list used to show a
   worktree only once a terminal was already inside it, which meant a worktree
   you had not visited was invisible and you had to know it existed and `cd`

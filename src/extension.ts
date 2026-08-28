@@ -1,7 +1,11 @@
 import * as vscode from 'vscode';
 import type { GitExtension, API as GitAPI } from './git';
 import { SessionTracker, changeCount, isListed } from './sessionTracker';
-import { ChangesProvider, type ChangeNode } from './changesProvider';
+import {
+  ChangesProvider,
+  type ChangeNode,
+  type BaselineFileNode
+} from './changesProvider';
 import { FilesProvider } from './filesProvider';
 import { SessionsProvider } from './sessionsProvider';
 import { newSession, removeWorktree } from './worktree';
@@ -11,6 +15,7 @@ import {
 } from './worktreeTerminals';
 import type { Session } from './sessionTracker';
 import { SessionStyles, COLORS, ICONS } from './sessionStyles';
+import { Baselines } from './baselines';
 import { StashGuard } from './stashGuard';
 import { ConflictRadar } from './conflictRadar';
 import { log, showLog, disposeLog } from './log';
@@ -35,9 +40,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const tracker = new SessionTracker(git);
   const styles = new SessionStyles(context.globalState);
-  const changes = new ChangesProvider(tracker, git, styles);
+  const baselines = new Baselines(context.globalState);
+  const changes = new ChangesProvider(tracker, git, styles, baselines);
   const files = new FilesProvider(tracker);
-  const radar = new ConflictRadar(tracker, styles);
+  const radar = new ConflictRadar(tracker, styles, baselines);
   const sessions = new SessionsProvider(tracker, styles, radar);
   const stashGuard = new StashGuard(tracker);
 
@@ -110,8 +116,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     status.show();
   };
 
+  /**
+   * Stamp the starting commit of every session that has not got one.
+   *
+   * Has to run on every change rather than once: a session's repository
+   * resolves asynchronously, and a worktree entered ten minutes from now still
+   * wants a baseline from the moment it was first seen rather than from
+   * whenever somebody asks.
+   */
+  const stampBaselines = async (): Promise<void> => {
+    await Promise.all(
+      tracker.allSessions.filter(isListed).map(session => baselines.ensure(session))
+    );
+  };
+
   paint(tracker.activeSession);
   void styles.prune().then(() => styles.autoAssign(tracker.allSessions));
+  void baselines
+    .prune()
+    .then(stampBaselines)
+    .catch(error => log(`baseline: could not prepare baselines: ${String(error)}`));
 
   /**
    * The startup pass, run as the git extension registers repositories.
@@ -154,12 +178,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     sessionsView,
     status,
     styles,
+    baselines,
     tracker.onDidChangeSession(paint),
     tracker.onDidChangeSessions(() => void styles.autoAssign(tracker.allSessions)),
+    // Deliberately no `baselines.invalidate()` here. This fires on every
+    // terminal switch and every git state change, and a commit list only
+    // changes when HEAD moves -- which `Baselines.read` checks for itself.
+    // Dropping the cache here spawned a git process per worktree for clicking
+    // between terminals.
+    tracker.onDidChangeSessions(() => void stampBaselines()),
     styles.onDidChange(() => paint(tracker.activeSession)),
     vscode.workspace.onDidChangeConfiguration(event => {
       if (event.affectsConfiguration('parallelo.autoSessionColors')) {
         void styles.syncAutoColors(tracker.allSessions);
+      }
+      if (event.affectsConfiguration('parallelo.sessionBaseline')) {
+        baselines.invalidate();
+        changes.refresh();
+        // The radar counts baseline files too, so turning this off has to take
+        // the marks off the rows rather than leaving them until some unrelated
+        // git event happens to repaint.
+        radar.rescan();
       }
     }),
 
@@ -182,6 +221,31 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       newSession(git, tracker)
     ),
 
+    vscode.commands.registerCommand('parallelo.resetBaseline', async () => {
+      const session = tracker.activeSession;
+      if (!session?.repository) {
+        vscode.window.showInformationMessage(
+          'No session is active, so there is no baseline to reset.'
+        );
+        return;
+      }
+      if (!(await baselines.reset(session))) {
+        vscode.window.showInformationMessage(
+          'This worktree has no commits yet, so there is nothing to start from.'
+        );
+        return;
+      }
+      const sha = session.repository.state.HEAD?.commit ?? '';
+      vscode.window.showInformationMessage(
+        `Session baseline is now ${sha.slice(0, 8)}. Everything before it is out of view.`
+      );
+      changes.refresh();
+      // The radar counts this session's commits, and the reset just changed
+      // which ones those are. Without this the rows keep marks worked out from
+      // the old, wider baseline until some unrelated git event repaints them.
+      radar.rescan();
+    }),
+
     vscode.commands.registerCommand('parallelo.openAllWorktrees', async () => {
       const result = await openWorktreeTerminals(git, tracker);
       if (result.opened) {
@@ -203,8 +267,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     }),
 
-    vscode.commands.registerCommand('parallelo.openChange', (node?: ChangeNode) =>
-      changes.openChange(node)
+    vscode.commands.registerCommand(
+      'parallelo.openChange',
+      (node?: ChangeNode | BaselineFileNode) => changes.openChange(node)
     ),
 
     vscode.commands.registerCommand('parallelo.discardChange', (node?: ChangeNode) =>
