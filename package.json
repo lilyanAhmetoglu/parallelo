@@ -61,7 +61,7 @@
       },
       {
         "view": "worktreeSessions.sessions",
-        "contents": "No terminals are running in a git worktree yet.\n\n[Start a worktree session](command:parallelo.newSession)"
+        "contents": "No terminals are running in a git worktree yet.\n\n[Start a worktree session](command:parallelo.newSession)\n[Open a terminal in every worktree](command:parallelo.openAllWorktrees)"
       }
     ],
     "commands": [
@@ -70,6 +70,12 @@
         "title": "Start Worktree Session",
         "category": "Parallelo Session",
         "icon": "$(add)"
+      },
+      {
+        "command": "parallelo.openAllWorktrees",
+        "title": "Open a Terminal in Every Worktree",
+        "category": "Parallelo Session",
+        "icon": "$(terminal)"
       },
       {
         "command": "parallelo.refresh",
@@ -184,9 +190,14 @@
           "group": "navigation@1"
         },
         {
+          "command": "parallelo.openAllWorktrees",
+          "when": "view == worktreeSessions.sessions",
+          "group": "navigation@2"
+        },
+        {
           "command": "parallelo.refresh",
           "when": "view =~ /^worktreeSessions\\./",
-          "group": "navigation@2"
+          "group": "navigation@3"
         },
         {
           "command": "parallelo.stageAll",
@@ -395,6 +406,11 @@
           "type": "boolean",
           "default": true,
           "description": "List a terminal in the main checkout as a session. Turn this off to see only worktree sessions -- the main checkout always has a row and can never be removed, because git worktree remove refuses the main working tree."
+        },
+        "parallelo.openWorktreeTerminals": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open a terminal in every worktree of the repository when the window starts, so each one appears in the Sessions list without being visited first. Worktrees that already have a terminal are left alone."
         }
       }
     }

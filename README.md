@@ -21,6 +21,13 @@ process in the terminal is the only contract.**
   the index, an untracked one is deleted outright.
 - **Files** — a file tree rooted at that worktree, so you browse the branch you
   are actually on.
+- **Every worktree is there from the start** — when the window opens, Parallelo
+  asks git which worktrees the repository has and opens a terminal in each one
+  that does not already have one. You never have to know a worktree exists in
+  order to see it, and no worktree sits outside the conflict radar because
+  nobody has visited it yet. Linked worktrees only, so a repository without any
+  gets nothing, and when more than twelve terminals would be created it asks
+  first. **Open a Terminal in Every Worktree** does the same pass on demand.
 - **Sessions** — every terminal inside a worktree, with its branch, how far it
   has drifted from its upstream (`↑2 ↓1`) and its change count. Click one to
   focus its terminal, and the list follows whichever terminal you are in.
@@ -146,6 +153,7 @@ appear.
 | `parallelo.copyFiles` | `.env`, `.env.local` | Untracked files copied into each new worktree |
 | `parallelo.showStatusBar` | `true` | Show the active session's branch in the status bar |
 | `parallelo.showMainCheckout` | `true` | List a terminal in the main checkout, not only worktree sessions |
+| `parallelo.openWorktreeTerminals` | `true` | Open a terminal in every worktree when the window starts |
 
 ## Licence
 
