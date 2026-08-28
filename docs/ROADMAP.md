@@ -76,28 +76,28 @@ falls out of data we already hold.
 
 Things competitors have that we should take.
 
-### 3.1 Ahead / behind badges — **S**
+### 3.1 Ahead / behind badges — **S** — **DONE 2026-08-20** (`feat/badges`)
 `↑N ↓N` next to the existing dirty count. Every extension in the category has
 this and we look thin without it.
 
 *Implementation:* `repository.state.HEAD.ahead` / `.behind`, rendered in
 `sessionsProvider.ts` `getTreeItem` alongside the current dirty count.
 
-### 3.2 Pin to top — **S**
+### 3.2 Pin to top — **S** — **DONE 2026-08-20** (`feat/badges`)
 Matters as soon as you run five sessions.
 
 *Implementation:* add `pinned?: boolean` to `SessionStyle` in
 `src/sessionStyles.ts` — it is already keyed by worktree path and already
 persists. Sort in `SessionsProvider.getChildren()`.
 
-### 3.3 Quick-switch — **S**
+### 3.3 Quick-switch — **S** — **DONE 2026-08-20** (`feat/badges`)
 Click the status bar → QuickPick of sessions → focus the terminal.
 
 *Implementation:* one command; `tracker.allSessions` for the picker,
 `session.terminal.show()` on pick. Point `status.command` at it instead of the
 view container.
 
-### 3.4 Reuse the existing terminal — **S**
+### 3.4 Reuse the existing terminal — **S** — **DONE**, via `focusTerminal`
 Already effectively done via `focusTerminal`. Verify it holds when a session is
 reopened rather than switched to.
 
@@ -176,7 +176,9 @@ single most common way people lose the thread with a parallel agent.
   the same URI mechanism `changesProvider.openChange` already uses.
 - Offer "reset baseline to now" so it can be re-armed after a review.
 
-**Depends on §7 being settled.** This feature is built entirely on those URIs.
+**§7 is settled** — per-hunk staging was verified on 2026-08-28, so the URIs this is built on are known good. Nothing blocks it.
+
+**Then feed its per-session file set into `conflictRadar.editedFiles`.** That closes the radar's known hole, where a file leaves the comparison the moment an agent commits it.
 
 ### 4.3 Conflict radar — **M** — **DONE 2026-08-20** (`feat/conflict-radar`)
 
@@ -337,6 +339,31 @@ to the main checkout expresses.
 many sessions, the answer is grouping or filtering that leaves every session
 visible to the radar.
 
+### 4.8 A terminal in every worktree — **S** — **DONE 2026-08-28** (`feat/list-worktrees`, PR #11)
+
+**Problem.** The Sessions list only showed a worktree once a terminal was
+already inside it, so a worktree nobody had visited was invisible — you had to
+know it existed and `cd` there by hand. Found the hard way while trying to run
+the §7 test.
+
+**It was also a hole in §4.3.** A worktree with no terminal is not a session, so
+it takes no part in the conflict comparison: an agent working in one raised no
+warning and was not warned about. Same failure §4.7 was removed for.
+
+**Built.** On startup, `git worktree list --porcelain` from each registered
+repository, then a terminal in every linked worktree that has none. Linked only
+— the main checkout is already open, and including it would put an
+unasked-for terminal in every ordinary single-checkout repository.
+`showMainCheckout` is not consulted; it governs what the list *shows*, not what
+gets opened. Command **Open a Terminal in Every Worktree**, setting
+`parallelo.openWorktreeTerminals`.
+
+**Not a worktree manager**, which §5 rules out. Listing worktrees so a terminal
+can attach is the discovery half of the binding this extension already does.
+
+**Still to do:** run it in a dev host. The logic is covered by a node harness
+against the lab, but nobody has watched it open a terminal.
+
 ## 6b. Learned the hard way, 2026-08-28
 
 **A `.git` that exists is not a repository.** `findGitRoot` only stat'd it, so a
@@ -355,31 +382,20 @@ under `/private/tmp/claude-501/.../scratchpad/testrepo` was destroyed between
 sessions and its corpse then caused the bug above. `~/Desktop/parallelo-testrepo`
 is the one that survives.
 
-## 7. Unverified assumptions
+## 7. Unverified assumptions — **SETTLED 2026-08-28**
 
-**Per-hunk staging has never been tested.** CLAUDE.md calls it "the highest-value
-behavior to verify; it means the git URIs are correct."
+**Per-hunk staging works.** Tested in an Extension Development Host against
+`~/Desktop/parallelo-lab/worktrees/feature-a/src/config.ts`: the file was opened
+from the extension's own **Changes** view, the cursor put inside the first of
+two hunks, and **Git: Stage Selected Ranges** run. `git diff --cached` held only
+the `option2` hunk; `option14` stayed unstaged.
 
-Test: terminal into a worktree → click a changed file in the Changes view →
-click inside one hunk → `Git: Stage Selected Ranges` → confirm with
-`git diff --cached` that **only that hunk** is staged.
+So `changesProvider.openChange` produces correct git URIs, which is what
+everything built so far assumed and what §4.2 is built entirely on. The fixture
+is the lab, not the scratchpad repo this section used to describe — that one was
+destroyed three times and `/private/tmp` is the wrong place for it.
 
-Everything built so far assumes `changesProvider.openChange` produces correct
-git URIs. §4.2 depends on it entirely. If it fails, the fix is in `openChange`,
-not in anything else built this week.
-
-The old fixture lived in a session scratchpad and is gone. Rebuild it with:
-
-```bash
-git init -b main testrepo && cd testrepo
-seq 1 40 > alpha.txt && seq 1 40 > beta.txt
-git add -A && git commit -m base
-git worktree add .worktrees/test-a -b session/test-a
-git worktree add .worktrees/test-b -b session/test-b
-```
-
-Then edit lines 3 and 35 of `test-a/alpha.txt` and lines 5 and 30 of
-`test-b/beta.txt` — two separate hunks each, nothing staged.
+Nothing else in this project is unverified. This was the last one.
 
 ---
 
