@@ -3,6 +3,19 @@
 ## [Unreleased]
 
 ### Added
+- **Hide Session**, on the row's right-click menu. It takes the row out of the
+  Sessions list and the session picker and does nothing else — the terminal
+  keeps running, and the views still follow it when it is focused. This is what
+  the main checkout needed: it always gets a row and can never be deleted,
+  because `git worktree remove` refuses the main working tree. An eye in the
+  view title shows up while anything is hidden and puts it all back, and the
+  toast that confirms a hide offers the same thing. Hiding is keyed by
+  worktree, like name and colour, so it survives a reload and takes both
+  terminals when a worktree holds two.
+- **Close Session** is now an inline icon on rows that have no bin — the main
+  checkout and any other non-worktree session. It stays out of the row where a
+  bin already sits, because two icons that both make a session disappear, one
+  of which deletes work, is not a choice worth making at a glance.
 - **Conflict radar.** A session with uncommitted edits to a file another
   session of the same repository has also edited is marked on its row three
   ways, so none of it depends on the sidebar being wide: the session name takes
