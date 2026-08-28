@@ -427,6 +427,11 @@
           "type": "boolean",
           "default": true,
           "description": "Show what each session has changed since it started, including work it has already committed, and count it in the conflict radar."
+        },
+        "parallelo.baselineBranch": {
+          "type": "string",
+          "default": "",
+          "description": "Branch a session is considered to have branched from, for the Session commits group. Leave empty to use origin/HEAD, then main, then master. Set it for a repository that integrates into something else, such as develop."
         }
       }
     }

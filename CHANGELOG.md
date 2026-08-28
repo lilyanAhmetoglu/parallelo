@@ -21,13 +21,21 @@
   and a commit is the unit the work arrives in.
 
   The mark is where the branch left the integration branch — `origin/HEAD`, or
-  `main`, or `master`, whichever the repository has — rather than wherever HEAD
+  `main`, or `master`, whichever the repository has, or whatever
+  **`parallelo.baselineBranch`** names for a repository that integrates into
+  something else — rather than wherever HEAD
   happened to be when the worktree was first seen. Stamping HEAD looked
   reasonable and was wrong in the most ordinary case there is: a worktree with
   work already committed put all of it behind the mark, so the group showed
   nothing and read as broken. Anchoring instead to whatever branch the main
   *worktree* was on was wrong in a quieter way — checking out a feature branch
   there moved the origin of every session stamped afterwards.
+
+  A repository with none of those — no remote, no `main`, no `master`, which
+  is every repository that has just been started — marks the beginning of
+  history instead. There is nothing to have branched from, so everything on the
+  branch is the session's work. Falling back to HEAD there reintroduced the
+  original bug in the one place nobody would look for it.
 
   A commit's files are read when its row is opened, not up front. Reading them
   all in advance meant one `git diff-tree` per commit for every worktree at

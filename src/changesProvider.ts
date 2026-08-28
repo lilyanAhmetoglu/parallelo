@@ -43,7 +43,8 @@ interface ChangeNode {
 interface CommitsNode {
   kind: 'commits';
   commits: BaselineCommit[];
-  sha: string;
+  /** Where the count is measured from, or null for the whole history. */
+  sha: string | null;
   /** Commits past the cap, counted but not listed. */
   /** There are older commits than the ones listed. */
   more: boolean;
@@ -383,8 +384,8 @@ export class ChangesProvider implements vscode.TreeDataProvider<Node> {
       // is what to do about it.
       item.description = 'starting commit is gone';
       item.tooltip = new vscode.MarkdownString(
-        `The commit this session started from (\`${node.sha.slice(0, 8)}\`) is no longer ` +
-          'in the repository, so there is nothing to measure from.\n\n' +
+        `The commit this session started from (\`${(node.sha ?? '').slice(0, 8)}\`) is no ` +
+          'longer in the repository, so there is nothing to measure from.\n\n' +
           'Use **Reset Session Baseline to Now** on this row to start again from here.'
       );
       item.iconPath = new vscode.ThemeIcon('warning');
@@ -400,8 +401,12 @@ export class ChangesProvider implements vscode.TreeDataProvider<Node> {
       ? `${count}+ commits`
       : `${count} commit${count === 1 ? '' : 's'}`;
     item.tooltip = new vscode.MarkdownString(
-      `Commits made in this worktree since the session started at ` +
-        `\`${node.sha.slice(0, 8)}\`.\n\n` +
+      (node.sha
+        ? `Commits made in this worktree since the session started at ` +
+          `\`${node.sha.slice(0, 8)}\`.`
+        : 'Every commit on this branch. The repository has no `main`, `master` or ' +
+          'remote to have branched from, so there is nothing to leave out.') +
+        '\n\n' +
         (node.more ? 'Older commits are not listed.\n\n' : '') +
         'Uncommitted work is in the groups above.'
     );

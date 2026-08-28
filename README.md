@@ -21,7 +21,8 @@ process in the terminal is the only contract.**
   the index, an untracked one is deleted outright.
 - **Session commits** — the last group in the Changes view: what this session
   has committed since its branch left the integration branch (`origin/HEAD`,
-  `main` or `master`, whichever exists), one row per commit,
+  `main` or `master`, whichever exists — or `parallelo.baselineBranch`), one
+  row per commit,
   labelled with its message and holding the files it touched. The groups above lose a file the moment the
   agent commits it, which is exactly when you most want to see what it did.
   Click a file for the diff across that commit. **Reset Session Baseline to
@@ -159,6 +160,7 @@ appear.
 | `parallelo.stashGuard` | `true` | Warn when the shared stash is used with more than one session live |
 | `parallelo.conflictRadar` | `true` | Mark sessions editing the same file as another session |
 | `parallelo.sessionBaseline` | `true` | List each session's own commits, and count them in the conflict radar |
+| `parallelo.baselineBranch` | — | Branch a session is taken to have branched from; empty means `origin/HEAD`, `main`, then `master` |
 | `parallelo.setupCommand` | — | Command run once in a new worktree before the agent starts |
 | `parallelo.copyFiles` | `.env`, `.env.local` | Untracked files copied into each new worktree |
 | `parallelo.showStatusBar` | `true` | Show the active session's branch in the status bar |

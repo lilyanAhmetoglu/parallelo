@@ -32,8 +32,16 @@ const MAX_COMMITS = 100;
 const FIELD = '\x1f';
 
 interface Baseline {
-  /** Commit the worktree was on the first time this session was seen. */
-  sha: string;
+  /**
+   * Commit this session's work is measured from.
+   *
+   * `null` means the beginning of history: a repository with no integration
+   * branch to diverge from has nothing to subtract, so everything on this
+   * branch is the session's work. Falling back to HEAD instead put the
+   * session's own commits behind the mark and showed nothing at all -- which
+   * is the failure this whole mark exists to avoid.
+   */
+  sha: string | null;
   /** When it was stamped, so the view can say what "since" means. */
   at: number;
 }
@@ -75,8 +83,8 @@ export interface BaselineCommit {
 }
 
 export interface BaselineState {
-  /** The stamped commit this reading is measured from. */
-  sha: string;
+  /** The stamped commit this reading is measured from, or the whole history. */
+  sha: string | null;
   at: number;
   /**
    * HEAD when this reading was taken.
@@ -152,6 +160,20 @@ async function commitExists(root: string, sha: string): Promise<boolean> {
 const INTEGRATION_REFS = ['refs/remotes/origin/HEAD', 'refs/heads/main', 'refs/heads/master'];
 
 /**
+ * The branch this repository integrates into, if it is called something else.
+ *
+ * `develop`, `trunk`, and every house style that is neither `main` nor
+ * `master`. Tried before the defaults, and ignored if it does not resolve.
+ */
+function configuredRef(): string | undefined {
+  const named = vscode.workspace
+    .getConfiguration('parallelo')
+    .get<string>('baselineBranch', '')
+    .trim();
+  return named || undefined;
+}
+
+/**
  * Where this session's work began.
  *
  * Not HEAD. Stamping HEAD means a worktree that already has commits when it is
@@ -168,20 +190,25 @@ const INTEGRATION_REFS = ['refs/remotes/origin/HEAD', 'refs/heads/main', 'refs/h
  * wrote. Refs are shared by every worktree of a repository, so the branch can
  * be named from in here without going and finding its directory.
  *
- * Falls back to HEAD when none of the candidates exist, or when the histories
- * are unrelated, or when this session is the integration branch itself -- and
- * there the merge base is HEAD anyway.
+ * When none of the candidates exist there is nothing to subtract, so the
+ * answer is the whole history rather than HEAD. Falling back to HEAD is what
+ * this function was written to prevent: it marks the session as having done
+ * nothing, which is the one answer that is never useful. A session that *is*
+ * the integration branch is a different case and does come back as HEAD, via
+ * the merge base, which is correct -- it has nothing of its own yet.
  */
-async function startingPoint(root: string): Promise<string | undefined> {
-  let head: string;
+async function startingPoint(root: string): Promise<string | null | undefined> {
   try {
-    head = (await git(root, ['rev-parse', 'HEAD'])).trim();
+    await git(root, ['rev-parse', 'HEAD']);
   } catch {
     // No commits at all. There is nothing to measure from yet.
     return undefined;
   }
 
-  for (const ref of INTEGRATION_REFS) {
+  const configured = configuredRef();
+  const candidates = configured ? [configured, ...INTEGRATION_REFS] : INTEGRATION_REFS;
+
+  for (const ref of candidates) {
     try {
       await git(root, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
     } catch {
@@ -197,7 +224,11 @@ async function startingPoint(root: string): Promise<string | undefined> {
       break;
     }
   }
-  return head;
+
+  // Nothing to diverge from: a repository with no remote and no main or
+  // master, which includes every one that has just been started. Everything on
+  // this branch is this session's work.
+  return null;
 }
 
 /**
@@ -217,7 +248,7 @@ async function startingPoint(root: string): Promise<string | undefined> {
  * `--no-merges` and `--first-parent` for the reasons in `commitsSince`: a
  * merge authors nothing, and the branch it carried is not this session's work.
  */
-async function pathsTouched(root: string, sha: string): Promise<Set<string>> {
+async function pathsTouched(root: string, sha: string | null): Promise<Set<string>> {
   const out = await git(root, [
     'log',
     '--first-parent',
@@ -226,7 +257,7 @@ async function pathsTouched(root: string, sha: string): Promise<Set<string>> {
     '--format=',
     '--name-only',
     '-z',
-    `${sha}..HEAD`
+    sha ? `${sha}..HEAD` : 'HEAD'
   ]);
   const files = new Set<string>();
   for (const entry of out.split('\0')) {
@@ -247,10 +278,18 @@ async function pathsTouched(root: string, sha: string): Promise<Set<string>> {
  *
  * `-z`: paths are NUL-separated and never quoted, so a filename with a space,
  * a quote or a newline in it parses the same as any other.
+ *
+ * A merge still comes back empty, which is correct and is why merge rows do
+ * not open: its files belong to the commits on the branch it merged.
  */
 async function filesIn(root: string, sha: string): Promise<BaselineFile[]> {
   const out = await git(root, [
     'diff-tree',
+    // A commit with no parent has nothing to be compared against, and without
+    // this `diff-tree` prints nothing at all for one -- so the first commit of
+    // a repository listed every file it created as no files. It is reachable
+    // whenever the mark is the beginning of history.
+    '--root',
     '--no-commit-id',
     '--name-status',
     '-r',
@@ -307,7 +346,7 @@ async function filesIn(root: string, sha: string): Promise<BaselineFile[]> {
  */
 async function commitsSince(
   root: string,
-  sha: string
+  sha: string | null
 ): Promise<{ commits: BaselineCommit[]; more: boolean }> {
   const format = ['%H', '%s', '%an', '%at', '%P'].join(FIELD);
   const out = await git(root, [
@@ -321,7 +360,7 @@ async function commitsSince(
     '--first-parent',
     // One more than the cap, purely to find out whether there are more.
     `--max-count=${MAX_COMMITS + 1}`,
-    `${sha}..HEAD`
+    sha ? `${sha}..HEAD` : 'HEAD'
   ]);
 
   const lines = out.split('\n').filter(line => line.trim() !== '');
@@ -549,7 +588,7 @@ export class Baselines implements vscode.Disposable {
     this.stamping.add(key);
     try {
       const sha = await startingPoint(repository.rootUri.fsPath);
-      if (!sha) {
+      if (sha === undefined) {
         return;
       }
       await this.queue(async () => {
@@ -560,7 +599,9 @@ export class Baselines implements vscode.Disposable {
           return;
         }
         await this.memento.update(KEY, { ...all, [key]: { sha, at: Date.now() } });
-        log(`baseline: ${key} starts at ${sha.slice(0, 8)}`);
+          log(
+          `baseline: ${key} starts at ${sha ? sha.slice(0, 8) : 'the beginning of history'}`
+        );
         this._onDidChange.fire();
       });
     } finally {
@@ -673,7 +714,8 @@ export class Baselines implements vscode.Disposable {
     }
     const root = repository.rootUri.fsPath;
 
-    const state: BaselineState = (await commitExists(root, stamp.sha))
+    // Nothing to verify when the mark is the beginning of history.
+    const state: BaselineState = (stamp.sha === null || (await commitExists(root, stamp.sha)))
       ? await this.readCommits(root, stamp, head)
       : {
           sha: stamp.sha,
