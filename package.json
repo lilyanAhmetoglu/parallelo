@@ -61,13 +61,7 @@
       },
       {
         "view": "worktreeSessions.sessions",
-        "contents": "No terminals are running in a git worktree yet.\n\n[Start a worktree session](command:parallelo.newSession)",
-        "when": "!parallelo.hasHiddenSessions"
-      },
-      {
-        "view": "worktreeSessions.sessions",
-        "contents": "Every session in this window is hidden. Their terminals are still running.\n\n[Show hidden sessions](command:parallelo.showHiddenSessions)",
-        "when": "parallelo.hasHiddenSessions"
+        "contents": "No terminals are running in a git worktree yet.\n\n[Start a worktree session](command:parallelo.newSession)"
       }
     ],
     "commands": [
@@ -159,18 +153,6 @@
         "icon": "$(close)"
       },
       {
-        "command": "parallelo.hideSession",
-        "title": "Hide Session (Keeps the Terminal Running)",
-        "category": "Parallelo Session",
-        "icon": "$(eye-closed)"
-      },
-      {
-        "command": "parallelo.showHiddenSessions",
-        "title": "Show Hidden Sessions",
-        "category": "Parallelo Session",
-        "icon": "$(eye)"
-      },
-      {
         "command": "parallelo.pinSession",
         "title": "Pin Session to Top",
         "category": "Parallelo Session",
@@ -196,11 +178,6 @@
     ],
     "menus": {
       "view/title": [
-        {
-          "command": "parallelo.showHiddenSessions",
-          "when": "view == worktreeSessions.sessions && parallelo.hasHiddenSessions",
-          "group": "navigation@0"
-        },
         {
           "command": "parallelo.newSession",
           "when": "view == worktreeSessions.sessions",
@@ -272,11 +249,6 @@
           "command": "parallelo.closeSession",
           "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]ession(Pinned)?$/",
           "group": "2_session@1"
-        },
-        {
-          "command": "parallelo.hideSession",
-          "when": "view == worktreeSessions.sessions && viewItem =~ /^(worktree)?[sS]ession(Pinned)?$/",
-          "group": "2_session@2"
         },
         {
           "command": "parallelo.removeWorktree",
@@ -418,6 +390,11 @@
           "type": "boolean",
           "default": true,
           "description": "Mark sessions that have edited the same file as another session of the same repository, before the merge does."
+        },
+        "parallelo.showMainCheckout": {
+          "type": "boolean",
+          "default": true,
+          "description": "List a terminal in the main checkout as a session. Turn this off to see only worktree sessions -- the main checkout always has a row and can never be removed, because git worktree remove refuses the main working tree."
         }
       }
     }

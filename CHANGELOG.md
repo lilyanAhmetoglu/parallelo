@@ -12,16 +12,15 @@
   merge conflict can be discarded in one step — the same rule the Source
   Control panel follows, because `clean` looks only at the working tree and
   untracked groups — and each says so rather than appearing to do nothing.
-- **Hide Session**, on the row's right-click menu. It takes the row out of the
-  Sessions list and the session picker and does nothing else — the terminal
-  keeps running, and the views still follow it when it is focused. This is what
-  the main checkout needed: it always gets a row and can never be deleted,
-  because `git worktree remove` refuses the main working tree. An eye in the
-  view title shows up while anything is hidden and puts it all back, and the
-  toast that confirms a hide offers the same thing. Hiding is keyed by
-  worktree, like name and colour, so it survives a reload and takes both
-  terminals when a worktree holds two.
-- **Close Session** is now an inline icon on rows that have no bin — the main
+- **`parallelo.showMainCheckout`**, on by default. Turn it off to list only
+  worktree sessions. A terminal in the main checkout always gets a row and can
+  never be removed — `git worktree remove` refuses the main working tree — so
+  for anyone working entirely in worktrees it was a permanent row with nothing
+  to do about it. One setting rather than a per-row hide, deliberately: a row
+  that is absent while its terminal runs is state to remember, and a session
+  left out of the list is also left out of the conflict radar, which is exactly
+  what you do not want to do to a running agent by accident.
+- **Close Session** is an inline icon on rows that have no bin — the main
   checkout and any other non-worktree session. It stays out of the row where a
   bin already sits, because two icons that both make a session disappear, one
   of which deletes work, is not a choice worth making at a glance.
@@ -118,14 +117,12 @@
 - The change count on a session row, in the status bar and in the session
   picker counts what the Changes view lists. All three had their own copy of
   the arithmetic and all three disagreed with the view.
-- The conflict radar ignores hidden sessions. It could name one as the other
-  half of a conflict, pointing at a row that is not in the view or the picker.
 - A symlinked `.git` is read as a file rather than a directory. `FileType` is a
   bitmask, so a symlink to a file reports `File | SymbolicLink` and an equality
   test missed it — losing the worktree's Delete Worktree action.
 - The Changes view lists untracked files under `git.untrackedChanges` set to
-  `separate` or `hidden`. They are in a group of their own there rather than in
-  the working tree, so reading one group dropped them from the view entirely.
+  `separate`. They are in a group of their own there rather than in the working
+  tree, so reading one group dropped them from the view entirely.
 - Switching terminals quickly no longer leaves the views on the wrong session.
   Resolving a terminal takes a filesystem walk and a `ps`, so on a burst of
   switches the answer for the terminal you left could land after the answer for

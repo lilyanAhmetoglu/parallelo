@@ -318,6 +318,25 @@ Unchanged from CLAUDE.md, restated because every competitor drifted into them:
 
 ---
 
+### 4.7 Hide Session — **BUILT, REPLACED 2026-08-28**
+
+A per-row hide, keyed by worktree and persisted, built because the main
+checkout always gets a row that `git worktree remove` can never delete. It was
+replaced by `parallelo.showMainCheckout` after one round of use.
+
+Two reasons, and the second is the real one. A row that is gone while its
+terminal is still running is state the user has to hold in their head, with
+only an eye in the title bar hinting at it. And a session left out of the list
+is also left out of the conflict radar — it stops warning and stops being
+warned about — so hiding a worktree with an agent in it silently switches off
+the one thing this extension exists to tell you. That is safe for the main
+checkout and wrong for everything else, which is exactly what a setting scoped
+to the main checkout expresses.
+
+**Do not rebuild a general per-row hide.** If the noise problem returns with
+many sessions, the answer is grouping or filtering that leaves every session
+visible to the radar.
+
 ## 6b. Learned the hard way, 2026-08-28
 
 **A `.git` that exists is not a repository.** `findGitRoot` only stat'd it, so a

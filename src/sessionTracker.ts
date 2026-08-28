@@ -42,6 +42,28 @@ export interface Session {
 }
 
 /**
+ * Whether this session belongs in the Sessions list.
+ *
+ * A terminal in the main checkout always gets a row and can never be removed
+ * -- `git worktree remove` refuses the main working tree -- so for anyone
+ * working entirely in worktrees it is a permanent row they cannot act on.
+ * `showMainCheckout` turns it off.
+ *
+ * `linked` is what says "this is a worktree of its own": a linked worktree has
+ * a `.git` file pointing into the common directory, the main checkout has a
+ * directory. A session that resolved no worktree at all is not a worktree
+ * session either, so it goes with the main checkout.
+ */
+export function isListed(session: Session): boolean {
+  if (session.linked === true) {
+    return true;
+  }
+  return vscode.workspace
+    .getConfiguration('parallelo')
+    .get<boolean>('showMainCheckout', true);
+}
+
+/**
  * How many files this session has touched, counted the way the Changes view
  * lists them.
  *
