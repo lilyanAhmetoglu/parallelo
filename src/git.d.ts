@@ -25,6 +25,20 @@ export interface Repository {
   readonly rootUri: Uri;
   readonly state: RepositoryState;
   add(paths: string[]): Promise<void>;
+  /**
+   * Unstages. `git reset HEAD -- <paths>`, despite the name -- it does not
+   * touch the working tree, so it is the safe half of the pair below.
+   */
+  revert(paths: string[]): Promise<void>;
+  /**
+   * Discards working tree changes.
+   *
+   * Two different git commands depending on the file: a modified tracked file
+   * is restored with `git checkout -- `, an untracked one is **deleted** by
+   * `git clean -f`. Paths that are not in the working tree or untracked groups
+   * -- a staged-only change, for one -- are silently ignored.
+   */
+  clean(paths: string[]): Promise<void>;
   status(): Promise<void>;
 }
 

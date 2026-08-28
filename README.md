@@ -15,6 +15,10 @@ process in the terminal is the only contract.**
 
 - **Changes** — staged and unstaged changes for the active terminal's worktree
   only. Click a file to open its native diff, with per-hunk staging intact.
+  **Discard** (↩) throws a file's changes away and **Unstage** (−) takes a
+  staged one back out of the index. Discarding always asks first, and says
+  which of the two things it is about to do: a modified file is restored from
+  the index, an untracked one is deleted outright.
 - **Files** — a file tree rooted at that worktree, so you browse the branch you
   are actually on.
 - **Sessions** — every terminal inside a worktree, with its branch, how far it

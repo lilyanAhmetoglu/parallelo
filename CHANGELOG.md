@@ -3,6 +3,15 @@
 ## [Unreleased]
 
 ### Added
+- **Discard Changes** and **Unstage Changes** on a row in the Changes view, so
+  a change can be thrown away where you are looking at it rather than in the
+  Source Control panel. Discarding asks first and names what it is about to do:
+  a modified file is restored from the index, an untracked file is **deleted**,
+  and those are two different git commands with two different costs. Unstaging
+  asks nothing, because nothing is lost. Neither a staged file nor one in a
+  merge conflict can be discarded in one step — the same rule the Source
+  Control panel follows, because `clean` looks only at the working tree and
+  untracked groups — and each says so rather than appearing to do nothing.
 - **Hide Session**, on the row's right-click menu. It takes the row out of the
   Sessions list and the session picker and does nothing else — the terminal
   keeps running, and the views still follow it when it is focused. This is what
@@ -86,6 +95,9 @@
   there is something to discard.
 
 ### Fixed
+- The Changes view lists untracked files under `git.untrackedChanges` set to
+  `separate` or `hidden`. They are in a group of their own there rather than in
+  the working tree, so reading one group dropped them from the view entirely.
 - Switching terminals quickly no longer leaves the views on the wrong session.
   Resolving a terminal takes a filesystem walk and a `ps`, so on a burst of
   switches the answer for the terminal you left could land after the answer for

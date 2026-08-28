@@ -94,6 +94,18 @@
         "category": "Parallelo Session"
       },
       {
+        "command": "parallelo.discardChange",
+        "title": "Discard Changes",
+        "category": "Parallelo Session",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "parallelo.unstageChange",
+        "title": "Unstage Changes",
+        "category": "Parallelo Session",
+        "icon": "$(remove)"
+      },
+      {
         "command": "parallelo.stageAll",
         "title": "Stage All Changes in Session",
         "category": "Parallelo Session",
@@ -270,6 +282,49 @@
           "command": "parallelo.removeWorktree",
           "when": "view == worktreeSessions.sessions && viewItem =~ /^worktreeSession(Pinned)?$/",
           "group": "9_danger@1"
+        },
+        {
+          "command": "parallelo.discardChange",
+          "when": "view == worktreeSessions.changes && viewItem == change",
+          "group": "inline@1"
+        },
+        {
+          "command": "parallelo.discardChange",
+          "when": "view == worktreeSessions.changes && viewItem == untrackedChange",
+          "group": "inline@1"
+        },
+        {
+          "command": "parallelo.unstageChange",
+          "when": "view == worktreeSessions.changes && viewItem == stagedChange",
+          "group": "inline@1"
+        },
+        {
+          "command": "parallelo.discardChange",
+          "when": "view == worktreeSessions.changes && viewItem =~ /^(untracked)?[cC]hange$/",
+          "group": "1_change@1"
+        },
+        {
+          "command": "parallelo.unstageChange",
+          "when": "view == worktreeSessions.changes && viewItem == stagedChange",
+          "group": "1_change@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "parallelo.openChange",
+          "when": "false"
+        },
+        {
+          "command": "parallelo.discardChange",
+          "when": "false"
+        },
+        {
+          "command": "parallelo.unstageChange",
+          "when": "false"
+        },
+        {
+          "command": "parallelo.focusTerminal",
+          "when": "false"
         }
       ]
     },
