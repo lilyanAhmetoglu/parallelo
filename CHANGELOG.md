@@ -3,6 +3,26 @@
 ## [Unreleased]
 
 ### Added
+- **Every worktree opens with a terminal.** The Sessions list used to show a
+  worktree only once a terminal was already inside it, which meant a worktree
+  you had not visited was invisible and you had to know it existed and `cd`
+  there by hand. On startup Parallelo now asks git for the repository's linked
+  worktrees and opens a terminal in each one that does not have one, so the
+  list is complete before you touch anything. It also closes a hole that was
+  never named: a worktree with no terminal was not watched by the conflict
+  radar, so an agent working in one raised no warning at all. Linked worktrees
+  only — the main checkout is already open, and including it would put an
+  unasked-for terminal in every ordinary single-checkout repository. Terminals
+  are created but not shown; one `show()` per worktree would steal focus that
+  many times and leave whichever came last in front. When more than twelve
+  terminals would be created it opens none and asks first — one shell per
+  worktree is cheap at four and hostile at forty — and it counts the terminals
+  actually missing, so thirteen worktrees with twelve terminals open still get
+  the thirteenth. A worktree already occupied is left alone, including when the
+  terminal sits in a subdirectory of it or reached it through a symlink.
+  **Open a Terminal in Every Worktree** runs the same pass by hand, from the
+  Sessions title bar, the empty-list message or the palette, and
+  **`parallelo.openWorktreeTerminals`** turns the startup pass off.
 - **Discard Changes** and **Unstage Changes** on a row in the Changes view, so
   a change can be thrown away where you are looking at it rather than in the
   Source Control panel. Discarding asks first and names what it is about to do:

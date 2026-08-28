@@ -7,7 +7,7 @@
       "request": "launch",
       "args": [
         "--extensionDevelopmentPath=${workspaceFolder}",
-        "/private/tmp/claude-501/-Users-lily-Desktop-projects-parallelo/f41dfa44-ed29-49f3-88cd-d07262364122/scratchpad/testrepo"
+        "${env:HOME}/Desktop/parallelo-lab"
       ],
       "outFiles": ["${workspaceFolder}/out/**/*.js"]
     }

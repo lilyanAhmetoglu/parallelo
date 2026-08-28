@@ -5,6 +5,10 @@ import { ChangesProvider, type ChangeNode } from './changesProvider';
 import { FilesProvider } from './filesProvider';
 import { SessionsProvider } from './sessionsProvider';
 import { newSession, removeWorktree } from './worktree';
+import {
+  openWorktreeTerminals,
+  openWorktreeTerminalsOnStartup
+} from './worktreeTerminals';
 import type { Session } from './sessionTracker';
 import { SessionStyles, COLORS, ICONS } from './sessionStyles';
 import { StashGuard } from './stashGuard';
@@ -109,7 +113,39 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   paint(tracker.activeSession);
   void styles.prune().then(() => styles.autoAssign(tracker.allSessions));
 
+  /**
+   * The startup pass, run as the git extension registers repositories.
+   *
+   * It cannot simply run once here: git discovers repositories
+   * asynchronously, so `repositories` is usually still empty during
+   * activation. Nor can a single latch do it -- in a multi-root workspace the
+   * second repository registers after the first has already been handled, and
+   * a latch means its worktrees are never opened at all. So the pass runs
+   * again for each repository not yet accounted for, and does nothing when
+   * they all are. `openWorktreeTerminals` serialises its own runs, so
+   * overlapping registrations cannot open a worktree twice.
+   */
+  const scanned = new Set<string>();
+  const openStartupTerminals = async (): Promise<void> => {
+    const fresh = git.repositories
+      .map(repository => repository.rootUri.fsPath)
+      .filter(root => !scanned.has(root));
+    if (!fresh.length) {
+      return;
+    }
+    for (const root of fresh) {
+      scanned.add(root);
+    }
+    try {
+      await openWorktreeTerminalsOnStartup(git, tracker);
+    } catch (error) {
+      log(`worktrees: startup pass failed: ${String(error)}`);
+    }
+  };
+  void openStartupTerminals();
+
   context.subscriptions.push(
+    git.onDidOpenRepository(() => void openStartupTerminals()),
     tracker,
     stashGuard,
     radar,
@@ -145,6 +181,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('parallelo.newSession', () =>
       newSession(git, tracker)
     ),
+
+    vscode.commands.registerCommand('parallelo.openAllWorktrees', async () => {
+      const result = await openWorktreeTerminals(git, tracker);
+      if (result.opened) {
+        return;
+      }
+      // Three different nothings, and saying the wrong one sends someone
+      // looking for a worktree that was never there, or leaves a git failure
+      // sitting in a log nobody opens.
+      if (result.unreadable) {
+        vscode.window.showErrorMessage(
+          'Could not read the worktree list from git. Parallelo Session: Show Log has the reason.'
+        );
+      } else if (!result.worktrees) {
+        vscode.window.showInformationMessage(
+          'This repository has no linked worktrees. Start Worktree Session makes one.'
+        );
+      } else {
+        vscode.window.showInformationMessage('Every worktree already has a terminal.');
+      }
+    }),
 
     vscode.commands.registerCommand('parallelo.openChange', (node?: ChangeNode) =>
       changes.openChange(node)
