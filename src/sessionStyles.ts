@@ -19,16 +19,6 @@ export interface SessionStyle {
   /** Kept in the pinned section at the top of the Sessions list. */
   pinned?: boolean;
   /**
-   * Taken out of the Sessions list, without touching the terminal.
-   *
-   * The main checkout cannot be removed -- `git worktree remove` refuses it,
-   * and rightly -- but it still gets a row, and there was no way to say "I am
-   * not working that way, stop listing it". Hiding is that, and it is about
-   * the list only: the terminal keeps running and the views still follow it
-   * when it is focused.
-   */
-  hidden?: boolean;
-  /**
    * Position within its section, set by dragging.
    *
    * Absent means "never been dragged", which sorts after everything that has,
@@ -144,7 +134,6 @@ export class SessionStyles implements vscode.Disposable {
       !next.color &&
       !next.icon &&
       !next.pinned &&
-      !next.hidden &&
       next.order === undefined &&
       next.autoColor !== false
     ) {
@@ -164,14 +153,13 @@ export class SessionStyles implements vscode.Disposable {
   private async clearNow(session: Session): Promise<void> {
     const all = { ...this.all() };
     const key = this.keyFor(session);
-    const { pinned, order, hidden } = all[key] ?? {};
+    const { pinned, order } = all[key] ?? {};
 
-    // Resetting *appearance* is name, colour and icon. Where the row sits, and
-    // whether it is listed at all, are not appearance -- dropping either here
-    // would move or resurrect the row as an unannounced side effect of a
-    // command about colours.
-    if (pinned || hidden || order !== undefined) {
-      all[key] = { pinned, order, hidden };
+    // Resetting *appearance* is name, colour and icon. Where the row sits is
+    // not appearance, and dropping it here would move the session down the
+    // list as an unannounced side effect of a command about colours.
+    if (pinned || order !== undefined) {
+      all[key] = { pinned, order };
     } else {
       delete all[key];
     }
@@ -217,13 +205,7 @@ export class SessionStyles implements vscode.Disposable {
       changed = true;
       // A name, icon, pin or hand-placed position is worth keeping; a record
       // holding only a colour we chose ourselves is not.
-      if (
-        style.name ||
-        style.icon ||
-        style.pinned ||
-        style.hidden ||
-        style.order !== undefined
-      ) {
+      if (style.name || style.icon || style.pinned || style.order !== undefined) {
         all[key] = { ...style, color: undefined, autoColor: undefined };
       } else {
         delete all[key];
@@ -396,50 +378,6 @@ export class SessionStyles implements vscode.Disposable {
         all[key] = { ...all[key], order: next++ };
       }
 
-      await this.memento.update(KEY, all);
-      this._onDidChange.fire();
-    });
-  }
-
-  /** Whether this session has been taken out of the list. */
-  isHidden(session: Session): boolean {
-    return Boolean(this.get(session).hidden);
-  }
-
-  /** The live sessions currently hidden, so a command can offer them back. */
-  hiddenAmong(sessions: Session[]): Session[] {
-    return sessions.filter(session => this.isHidden(session));
-  }
-
-  /** Puts every hidden session back in the list. */
-  unhideAll(): Promise<void> {
-    return this.queue(async () => {
-      const all = { ...this.all() };
-      let changed = false;
-      for (const [key, style] of Object.entries(all)) {
-        if (!style.hidden) {
-          continue;
-        }
-        changed = true;
-        const next = { ...style, hidden: undefined };
-        // Same cleanup rule as `updateNow`: a record that now says nothing is
-        // not worth keeping against a worktree that may never come back.
-        if (
-          !next.name &&
-          !next.color &&
-          !next.icon &&
-          !next.pinned &&
-          next.order === undefined &&
-          next.autoColor !== false
-        ) {
-          delete all[key];
-        } else {
-          all[key] = next;
-        }
-      }
-      if (!changed) {
-        return;
-      }
       await this.memento.update(KEY, all);
       this._onDidChange.fire();
     });

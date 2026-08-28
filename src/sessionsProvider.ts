@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { changeCount, type Session, type SessionTracker } from './sessionTracker';
+import { changeCount, isListed, type Session, type SessionTracker } from './sessionTracker';
 import type { SessionStyles } from './sessionStyles';
 import { sessionUri, type ConflictRadar } from './conflictRadar';
 
@@ -65,11 +65,9 @@ export class SessionsProvider
       return this.cached;
     }
 
-    // Hidden rows come out before anything else looks at the list, so they
-    // take no part in the sections, the ordering or the drag arithmetic.
-    const flat = this.styles
-      .arrange(this.tracker.allSessions)
-      .filter(session => !this.styles.isHidden(session));
+    // Filtered before anything else looks at the list, so an excluded row
+    // takes no part in the sections, the ordering or the drag arithmetic.
+    const flat = this.styles.arrange(this.tracker.allSessions).filter(isListed);
     const pinned = flat.filter(session => this.styles.get(session).pinned);
 
     // Both headings, or neither. With everything pinned there still has to be

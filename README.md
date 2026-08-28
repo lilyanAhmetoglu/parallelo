@@ -36,12 +36,6 @@ process in the terminal is the only contract.**
   pins to the right edge, and the row leads with `⚠ 2 conflicts`. Hover for
   which files and who else is in them. Worktrees isolate
   files, so neither agent can see the other one is in `auth.ts` too.
-- **Hide Session** — takes a row out of the list without touching anything.
-  The terminal keeps running and the views still follow it when it is focused;
-  it is only the list that forgets it. This is the answer for the main
-  checkout, which always gets a row and can never be deleted — `git worktree
-  remove` refuses the main working tree, and rightly. An eye appears in the
-  view title while anything is hidden, and brings it all back.
 - **Delete Worktree** (bin) — deletes the worktree directory. The branch is kept,
   uncommitted changes are not. It always asks first, and tells you how many files
   are at stake. To make a session go away without deleting anything, close its
@@ -151,6 +145,7 @@ appear.
 | `parallelo.setupCommand` | — | Command run once in a new worktree before the agent starts |
 | `parallelo.copyFiles` | `.env`, `.env.local` | Untracked files copied into each new worktree |
 | `parallelo.showStatusBar` | `true` | Show the active session's branch in the status bar |
+| `parallelo.showMainCheckout` | `true` | List a terminal in the main checkout, not only worktree sessions |
 
 ## Licence
 

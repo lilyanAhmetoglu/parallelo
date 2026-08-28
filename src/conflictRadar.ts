@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import type { Repository } from './git';
 import { Status } from './status';
-import type { Session, SessionTracker } from './sessionTracker';
+import { isListed, type Session, type SessionTracker } from './sessionTracker';
 import type { SessionStyles } from './sessionStyles';
 import { commonDirFor } from './gitCommonDir';
 import { log } from './log';
@@ -289,10 +289,9 @@ export class ConflictRadar implements vscode.Disposable, vscode.FileDecorationPr
     // git race, and the row already says another terminal is in there.
     const worktrees = new Map<string, Repository>();
     for (const session of this.tracker.allSessions) {
-      // A hidden session has no row and no entry in the picker, so naming it
-      // as the other half of a conflict points at something the user cannot
-      // see or switch to. Hidden means hidden.
-      if (session.repository && !this.styles.isHidden(session)) {
+      // A session with no row is one the user cannot see or switch to, so
+      // naming it as the other half of a conflict points at nothing.
+      if (session.repository && isListed(session)) {
         worktrees.set(session.repository.rootUri.fsPath, session.repository);
       }
     }
