@@ -96,6 +96,7 @@ export class ChangesProvider implements vscode.TreeDataProvider<Node> {
       // Empty under the default `git.untrackedChanges: mixed`, where these sit
       // in the working tree group instead. Under `separate` they are only
       // here, and reading one group would drop them from the view entirely.
+      // Under `hidden` git runs with `-uno` and neither group has them.
       const untracked = repository.state.untrackedChanges ?? [];
 
       if (merge.length) {

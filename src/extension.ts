@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import type { GitExtension, API as GitAPI } from './git';
-import { SessionTracker } from './sessionTracker';
+import { SessionTracker, changeCount } from './sessionTracker';
 import { ChangesProvider, type ChangeNode } from './changesProvider';
 import { FilesProvider } from './filesProvider';
 import { SessionsProvider } from './sessionsProvider';
@@ -100,9 +100,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       return;
     }
     const branch = session.repository.state.HEAD?.name ?? 'detached';
-    const dirty =
-      session.repository.state.workingTreeChanges.length +
-      session.repository.state.indexChanges.length;
+    const dirty = changeCount(session.repository);
     status.text = `$(git-branch) ${branch}${dirty ? ` $(diff) ${dirty}` : ''}`;
     status.tooltip = `${styles.title(session)}\n${session.cwd.fsPath}`;
     status.show();
@@ -278,9 +276,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         ordered.map(session => {
           const style = styles.get(session);
           const head = session.repository?.state.HEAD;
-          const dirty =
-            (session.repository?.state.workingTreeChanges.length ?? 0) +
-            (session.repository?.state.indexChanges.length ?? 0);
+          const dirty = changeCount(session.repository);
           // Two terminals in one worktree share a name, and choosing between
           // terminals is this picker's entire job -- so name the terminal too,
           // exactly as the rows do.
@@ -324,7 +320,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.window.showInformationMessage('No session is active.');
         return;
       }
-      const paths = repo.state.workingTreeChanges.map(c => c.uri.fsPath);
+      // Every group the Changes view lists. Reading only the working tree
+      // meant a session whose work was all new files, or a resolved conflict,
+      // reported nothing to stage while the view showed the files.
+      const paths = [
+        ...repo.state.workingTreeChanges,
+        ...repo.state.mergeChanges,
+        ...(repo.state.untrackedChanges ?? [])
+      ].map(c => c.uri.fsPath);
       if (!paths.length) {
         vscode.window.showInformationMessage('This session has nothing to stage.');
         return;

@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import type { Session, SessionTracker } from './sessionTracker';
+import { changeCount, type Session, type SessionTracker } from './sessionTracker';
 import type { SessionStyles } from './sessionStyles';
 import { sessionUri, type ConflictRadar } from './conflictRadar';
 
@@ -154,9 +154,7 @@ export class SessionsProvider
     const behind = head?.behind ? `↓${head.behind}` : '';
     const tracking = [ahead, behind].filter(Boolean).join(' ');
     const branch = [head?.name ?? session.label, tracking].filter(Boolean).join(' ');
-    const dirty =
-      (session.repository?.state.workingTreeChanges.length ?? 0) +
-      (session.repository?.state.indexChanges.length ?? 0);
+    const dirty = changeCount(session.repository);
 
     // Appearance is keyed by the worktree, so two terminals in one worktree
     // wear the same name and colour and read as a duplicated row. Name the

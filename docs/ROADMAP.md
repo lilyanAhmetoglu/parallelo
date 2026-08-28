@@ -318,6 +318,24 @@ Unchanged from CLAUDE.md, restated because every competitor drifted into them:
 
 ---
 
+## 6b. Learned the hard way, 2026-08-28
+
+**A `.git` that exists is not a repository.** `findGitRoot` only stat'd it, so a
+gutted `.git` — temp cleanup under `/tmp` removes `HEAD`, `config` and `index`
+while leaving `objects` and `refs` — resolved as a worktree root. The session
+bound to it, the row appeared, and `newSession` reported git's raw "not a git
+repository" from `git branch --list`. The walk now requires a `HEAD`, following
+the gitdir pointer when `.git` is a file.
+
+**Never offer `git init` for a damaged repository.** It is the obvious action
+and it is wrong: a fresh empty repo over a broken one looks healthy and strands
+every commit still in `objects`. Offer it only when there is no `.git` at all.
+
+**Do not keep a test repository in a session scratchpad.** Third time. The one
+under `/private/tmp/claude-501/.../scratchpad/testrepo` was destroyed between
+sessions and its corpse then caused the bug above. `~/Desktop/parallelo-testrepo`
+is the one that survives.
+
 ## 7. Unverified assumptions
 
 **Per-hunk staging has never been tested.** CLAUDE.md calls it "the highest-value

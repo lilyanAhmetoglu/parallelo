@@ -41,6 +41,28 @@ export interface Session {
   label: string;
 }
 
+/**
+ * How many files this session has touched, counted the way the Changes view
+ * lists them.
+ *
+ * One definition, used by the row, the status bar and the picker. They each
+ * had their own copy and all three disagreed with the view under a
+ * non-default `git.untrackedChanges`, where untracked files are in a group of
+ * their own.
+ */
+export function changeCount(repository: Repository | undefined): number {
+  const state = repository?.state;
+  if (!state) {
+    return 0;
+  }
+  return (
+    state.workingTreeChanges.length +
+    state.indexChanges.length +
+    state.mergeChanges.length +
+    (state.untrackedChanges?.length ?? 0)
+  );
+}
+
 function isInside(parent: string, child: string): boolean {
   const rel = path.relative(parent, child);
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
@@ -353,7 +375,9 @@ export class SessionTracker implements vscode.Disposable {
     const dotGit = vscode.Uri.joinPath(root, '.git');
     try {
       const stat = await vscode.workspace.fs.stat(dotGit);
-      if (stat.type !== vscode.FileType.File) {
+      // Bitmask; see the note in `hasUsableGit`. A symlinked `.git` file read
+      // as a directory here loses the row its Delete Worktree action.
+      if ((stat.type & vscode.FileType.File) === 0) {
         return false;
       }
       const pointer = Buffer.from(await vscode.workspace.fs.readFile(dotGit)).toString('utf8');
@@ -363,22 +387,78 @@ export class SessionTracker implements vscode.Disposable {
     }
   }
 
-  /** Walks up from `start` looking for a `.git` entry (a dir, or a file in a worktree). */
+  /**
+   * Walks up from `start` looking for a `.git` entry (a dir, or a file in a
+   * worktree), and checks that git would actually recognise it.
+   *
+   * The check is not paranoia. A `.git` directory whose `HEAD` has been
+   * deleted -- temp cleanup on a repository under `/tmp` does exactly this --
+   * still satisfies a stat, so the session bound to it, the row appeared, and
+   * every git call against it failed with "not a git repository". Starting a
+   * worktree session there reported that failure raw.
+   *
+   * A rejected `.git` does not end the walk: a broken one nested inside a
+   * healthy checkout should find the healthy parent rather than nothing.
+   */
   private async findGitRoot(start: vscode.Uri): Promise<vscode.Uri | undefined> {
     let dir = start;
     for (let depth = 0; depth < 24; depth++) {
-      try {
-        await vscode.workspace.fs.stat(vscode.Uri.joinPath(dir, '.git'));
+      if (await this.hasUsableGit(dir)) {
         return dir;
-      } catch {
-        const parent = vscode.Uri.file(path.dirname(dir.fsPath));
-        if (parent.fsPath === dir.fsPath) {
-          return undefined;
-        }
-        dir = parent;
       }
+      const parent = vscode.Uri.file(path.dirname(dir.fsPath));
+      if (parent.fsPath === dir.fsPath) {
+        return undefined;
+      }
+      dir = parent;
     }
     return undefined;
+  }
+
+  /**
+   * Whether `dir/.git` is something git can work with.
+   *
+   * `HEAD` is the cheapest thing that is always present in a real git
+   * directory and absent from a gutted one -- one stat, no process spawned,
+   * and this runs for every parent of every terminal. A `.git` *file* is a
+   * linked worktree or a submodule and points elsewhere, so follow the pointer
+   * and ask the same question of what it names.
+   */
+  private async hasUsableGit(dir: vscode.Uri): Promise<boolean> {
+    const dotGit = vscode.Uri.joinPath(dir, '.git');
+    let stat: vscode.FileStat;
+    try {
+      stat = await vscode.workspace.fs.stat(dotGit);
+    } catch {
+      return false;
+    }
+
+    // A bitmask, not an enum of distinct values: a symlink to a file reports
+    // `File | SymbolicLink`, so an equality test reads it as a directory.
+    if ((stat.type & vscode.FileType.File) === 0) {
+      return this.exists(vscode.Uri.joinPath(dotGit, 'HEAD'));
+    }
+
+    try {
+      const pointer = Buffer.from(await vscode.workspace.fs.readFile(dotGit)).toString('utf8');
+      const target = /^gitdir:\s*(.+)$/m.exec(pointer)?.[1]?.trim();
+      if (!target) {
+        return false;
+      }
+      const resolved = path.isAbsolute(target) ? target : path.resolve(dir.fsPath, target);
+      return this.exists(vscode.Uri.file(path.join(resolved, 'HEAD')));
+    } catch {
+      return false;
+    }
+  }
+
+  private async exists(uri: vscode.Uri): Promise<boolean> {
+    try {
+      await vscode.workspace.fs.stat(uri);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private watchRepository(repository: Repository): void {
