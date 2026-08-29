@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.1.2] - 2026-08-29
+
+### Fixed
+- **Session commits listed a whole repository as one session's work.** Opening
+  the extension in an existing project could put a hundred and fifty commits of
+  somebody's history under a heading that claims they belong to this session.
+  Two things caused it.
+
+  The branch a session is measured from was looked up by name — `origin/HEAD`,
+  `main`, `master` — and a repository that uses none of those got no answer, at
+  which point the range became the entire history. Parallelo now asks git where
+  the branch left every *other* branch, which needs no naming convention, so
+  `develop`, `trunk` and house styles anchor correctly. `origin/main` and
+  `origin/master` are consulted too, for clones that have neither `origin/HEAD`
+  nor a local copy of the default branch.
+
+  When there is genuinely nothing to fork from — a single branch and no remote
+  — the group now says **whole branch** and lists the twenty most recent
+  commits rather than everything. That case is real, but a long list stated
+  confidently is not an answer to it; a short one that says what it is showing
+  is.
+
+- **An unresolved starting point was permanent.** A repository seen before its
+  first remote, or mid-clone, was marked as having nothing to measure from and
+  kept that mark for good — so the view never recovered once the anchor
+  existed. Provisional marks are now re-derived, at most once a minute per
+  worktree, until they resolve.
+
+### Added
+- **GitHub Copilot** in the default agent list, beside Claude Code and Codex.
+
+### Changed
+- **The icon is 512×512 and centred.** It was 128×128, so every surface that
+  drew it larger drew it blurred, and the artwork sat four pixels from the left
+  edge against eighteen on the right. The white square it was painted on is
+  gone too, so it sits on whatever background it is given.
+
 ## [0.1.1] - 2026-08-29
 
 ### Changed
