@@ -3,7 +3,7 @@
   "displayName": "Parallelo Session",
   "description": "Binds the active terminal to its git worktree. Switch terminals, and the changes and files views follow.",
   "version": "0.1.0",
-  "publisher": "your-publisher-id",
+  "publisher": "LilyanALDIMASHKI",
   "license": "MIT",
   "engines": {
     "vscode": "^1.93.0"
