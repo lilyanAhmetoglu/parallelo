@@ -1,6 +1,16 @@
 # Changelog
 
-## [Unreleased]
+## [0.1.1] - 2026-08-29
+
+### Changed
+- **The store listing reads as a summary again.** Every entry under *What you
+  get* had grown into a paragraph, so the section a visitor skims first ran to
+  most of a screen. Each is one line now, and the detail moved into a *How it
+  behaves* section below it. No behaviour changed.
+
+## [0.1.0] - 2026-08-29
+
+First release.
 
 ### Added
 - **Session commits.** The Changes view shows uncommitted work only, so an
