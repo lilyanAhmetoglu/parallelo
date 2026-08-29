@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.5] - 2026-08-29
+
+### Added
+- **A demo on the store page.** Recorded against three real worktree sessions,
+  two of them editing the same file, so the conflict marks in it are real
+  rather than staged.
+
+
 ## [0.1.4] - 2026-08-29
 
 ### Fixed

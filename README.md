@@ -9,6 +9,12 @@ terminal you are working in to the diff you are looking at.
 Parallelo adds that connection. Focus a terminal, and the Changes and Files
 views scope themselves to that terminal's worktree.
 
+![Switching between three worktree sessions: the Changes panel, the file tree, the terminal and the status bar all follow the session you pick](https://raw.githubusercontent.com/lilyanAhmetoglu/parallelo/main/docs/demo.gif)
+
+Three agents, three worktrees, one window. Pick a session and everything
+follows it — the diff, the file tree, the terminal, the branch in the status
+bar. The ⚠ marks two sessions that are editing the same file.
+
 It never asks what is running. Claude Code, Codex, aider and a plain shell all
 behave identically, because **the working directory of the process in the
 terminal is the only contract.**
