@@ -43,15 +43,22 @@ macOS or Linux; Windows falls back to shell integration.
 
 ### Session commits
 
-The last group in the Changes view. A session's origin is where its branch left
-the integration branch — `origin/HEAD`, then `main`, then `master`, or whatever
-`parallelo.baselineBranch` names. If the repository uses none of those names,
-Parallelo asks git where this branch left every *other* branch, so `develop`,
-`trunk` and house styles work without configuring anything.
+The last group in the Changes view: what this session committed, and nothing
+else.
 
-A repository with a single branch and no remote has no fork point at all. There
-the group says **whole branch** and lists only the most recent commits, because
-none of them can be told apart from this session's work.
+For a worktree, that is read from git's own record of it. Every linked worktree
+keeps its own log of what happened inside it, so the session starts where the
+worktree started — not where a branch name suggests. This holds up when a branch
+has already been merged, when an agent leaves a mirror branch pointing at the
+same commits, and when the repository's default branch is months stale. All
+three make branch shape say a session did nothing while it was working.
+
+Elsewhere Parallelo falls back to where the branch left the others:
+`parallelo.baselineBranch` if you set it, then the fork point against every
+other branch, then `origin/HEAD`, `main` and `master`. A repository with one
+branch and no remote has no fork point at all — there the group says **whole
+branch** and lists only the most recent commits, because none of them can be
+told apart from this session's work.
 
 The groups above lose a file the moment an agent commits it, which is exactly
 when you most want to see what it did. Click any file for its diff across that

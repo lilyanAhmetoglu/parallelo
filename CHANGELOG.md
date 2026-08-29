@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.1.3] - 2026-08-29
+
+### Fixed
+- **Session commits listed a hundred commits nobody in the session wrote.**
+  0.1.2 narrowed this and did not close it. The remaining hole was that the
+  session was still being inferred from branch shape, and branch shape lies in
+  three ordinary situations: a branch already merged into the integration
+  branch has nothing unique left, an agent that leaves a mirror branch makes
+  every commit look shared, and a repository whose `origin/HEAD` points at a
+  branch the team stopped merging into hands back a fork point hundreds of
+  commits stale. The last one was the reported case: `origin/HEAD` was 141
+  commits behind the branch actually being developed, so all 141 were listed as
+  one worktree's work.
+
+  A worktree's commits are now read from git's record of *that worktree*. Every
+  linked worktree keeps its own HEAD log, written when it is created and
+  appended to by each commit made in it, so the session's start is something
+  git wrote down at the time rather than something inferred afterwards. It
+  cannot be dragged backwards by a stale branch and cannot be emptied by a
+  merge or a mirror.
+
+  The main checkout is excluded, deliberately: its log reaches back to the
+  repository's first commit, which is not a session.
+
+
 ## [0.1.2] - 2026-08-29
 
 ### Fixed
