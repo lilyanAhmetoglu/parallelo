@@ -43,13 +43,8 @@ interface ChangeNode {
 interface CommitsNode {
   kind: 'commits';
   commits: BaselineCommit[];
-  /** Where the count is measured from, or null for the whole history. */
-  sha: string | null;
-  /** Commits past the cap, counted but not listed. */
   /** There are older commits than the ones listed. */
   more: boolean;
-  /** The stamped commit is gone, so there is nothing to measure from. */
-  missing: boolean;
 }
 
 interface CommitNode {
@@ -184,16 +179,10 @@ export class ChangesProvider implements vscode.TreeDataProvider<Node> {
       // `onDidChange`, rather than holding the groups above -- which are the
       // point of the view -- behind a git subprocess.
       const baseline = this.baselines.snapshot(session);
-      if (baseline && (baseline.commits.length || baseline.missing)) {
+      if (baseline && baseline.commits.length) {
         return [
           ...groups,
-          {
-            kind: 'commits' as const,
-            commits: baseline.commits,
-            sha: baseline.sha,
-            more: baseline.more,
-            missing: baseline.missing
-          }
+          { kind: 'commits' as const, commits: baseline.commits, more: baseline.more }
         ];
       }
       return groups;
@@ -373,56 +362,19 @@ export class ChangesProvider implements vscode.TreeDataProvider<Node> {
   private commitsItem(node: CommitsNode): vscode.TreeItem {
     const item = new vscode.TreeItem(
       'Session commits',
-      node.missing
-        ? vscode.TreeItemCollapsibleState.None
-        : vscode.TreeItemCollapsibleState.Collapsed
+      vscode.TreeItemCollapsibleState.Collapsed
     );
-
-    if (node.missing) {
-      // Not an error. A hard reset, or a worktree remade under the same path,
-      // leaves a stamp pointing at nothing, and the only useful thing to say
-      // is what to do about it.
-      item.description = 'starting commit is gone';
-      item.tooltip = new vscode.MarkdownString(
-        `The commit this session started from (\`${(node.sha ?? '').slice(0, 8)}\`) is no ` +
-          'longer in the repository, so there is nothing to measure from.\n\n' +
-          'Use **Reset Session Baseline to Now** on this row to start again from here.'
-      );
-      item.iconPath = new vscode.ThemeIcon('warning');
-      // No `command`. TreeItem.command fires on selection, so arrow-keying on
-      // to this row to read the tooltip would silently overwrite the stamp,
-      // and the old one is not recoverable. The inline button is the way.
-      item.contextValue = 'commitsMissing';
-      return item;
-    }
-
     const count = node.commits.length;
-    if (node.sha) {
-      item.description = node.more
-        ? `${count}+ commits`
-        : `${count} commit${count === 1 ? '' : 's'}`;
-    } else {
-      // Say that this is the branch, not the session. Showing a plain count
-      // here claimed a repository's whole history as this session's work,
-      // which is the wrong answer stated confidently.
-      item.description = node.more ? 'whole branch, latest first' : 'whole branch';
-    }
+    item.description = node.more
+      ? `${count}+ commits`
+      : `${count} commit${count === 1 ? '' : 's'}`;
     item.tooltip = new vscode.MarkdownString(
-      (node.sha
-        ? `Commits made in this worktree since the session started at ` +
-          `\`${node.sha.slice(0, 8)}\`.`
-        : 'This branch shares history with no other branch and the repository has ' +
-          'no `main`, `master` or remote, so there is no point to measure a session ' +
-          'from. These are the branch\'s own commits, newest first — not ' +
-          'necessarily this session\'s.\n\nSet **`parallelo.baselineBranch`** to the ' +
-          'branch sessions are taken to have left, and this becomes an exact range.') +
-        '\n\n' +
-        (node.more
-          ? node.sha
-            ? 'Older commits are not listed.\n\n'
-            : 'Only the most recent are listed.\n\n'
-          : '') +
-        'Uncommitted work is in the groups above.'
+      'Commits made in this worktree, newest first. Read from git\'s own record ' +
+        'of this worktree, so a merge that arrived by `git pull` is not one of ' +
+        'them and neither is anything another branch did.\n\n' +
+        (node.more ? 'Older commits are not listed.\n\n' : '') +
+        'Uncommitted work is in the groups above.\n\n' +
+        'Use **Reset Session Baseline to Now** to hide everything up to this point.'
     );
     item.iconPath = new vscode.ThemeIcon('git-commit');
     item.contextValue = 'commits';
