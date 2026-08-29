@@ -397,17 +397,31 @@ export class ChangesProvider implements vscode.TreeDataProvider<Node> {
     }
 
     const count = node.commits.length;
-    item.description = node.more
-      ? `${count}+ commits`
-      : `${count} commit${count === 1 ? '' : 's'}`;
+    if (node.sha) {
+      item.description = node.more
+        ? `${count}+ commits`
+        : `${count} commit${count === 1 ? '' : 's'}`;
+    } else {
+      // Say that this is the branch, not the session. Showing a plain count
+      // here claimed a repository's whole history as this session's work,
+      // which is the wrong answer stated confidently.
+      item.description = node.more ? 'whole branch, latest first' : 'whole branch';
+    }
     item.tooltip = new vscode.MarkdownString(
       (node.sha
         ? `Commits made in this worktree since the session started at ` +
           `\`${node.sha.slice(0, 8)}\`.`
-        : 'Every commit on this branch. The repository has no `main`, `master` or ' +
-          'remote to have branched from, so there is nothing to leave out.') +
+        : 'This branch shares history with no other branch and the repository has ' +
+          'no `main`, `master` or remote, so there is no point to measure a session ' +
+          'from. These are the branch\'s own commits, newest first — not ' +
+          'necessarily this session\'s.\n\nSet **`parallelo.baselineBranch`** to the ' +
+          'branch sessions are taken to have left, and this becomes an exact range.') +
         '\n\n' +
-        (node.more ? 'Older commits are not listed.\n\n' : '') +
+        (node.more
+          ? node.sha
+            ? 'Older commits are not listed.\n\n'
+            : 'Only the most recent are listed.\n\n'
+          : '') +
         'Uncommitted work is in the groups above.'
     );
     item.iconPath = new vscode.ThemeIcon('git-commit');

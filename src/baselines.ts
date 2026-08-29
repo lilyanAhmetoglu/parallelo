@@ -28,6 +28,22 @@ const KEY = 'parallelo.baselines.v2';
  */
 const MAX_COMMITS = 100;
 
+/**
+ * How many commits are listed when there is nothing to measure from.
+ *
+ * A repository with a single branch and no remote gives no fork point, so
+ * every commit in it is indistinguishable from this session's work. Listing
+ * all of them was the first answer and it is wrong in the ordinary case:
+ * opening the extension in an existing project put a hundred and fifty commits
+ * of somebody's history under a heading that claims they are this session's.
+ * That is not a long list, it is a false one.
+ *
+ * A small number still helps the case the fallback exists for -- a repository
+ * started an hour ago, where the whole history *is* the session -- and the
+ * header says plainly when it is showing this rather than a real range.
+ */
+const UNANCHORED_MAX = 20;
+
 /** Field separator inside one `git log` record. Never occurs in a subject. */
 const FIELD = '\x1f';
 
@@ -157,7 +173,75 @@ async function commitExists(root: string, sha: string): Promise<boolean> {
  * -- so the merge base would be HEAD and the whole list would empty out at the
  * moment the work was published.
  */
-const INTEGRATION_REFS = ['refs/remotes/origin/HEAD', 'refs/heads/main', 'refs/heads/master'];
+const INTEGRATION_REFS = [
+  'refs/remotes/origin/HEAD',
+  'refs/heads/main',
+  'refs/heads/master',
+  // A clone made with `--single-branch`, or one whose default branch has never
+  // been checked out locally, has neither `origin/HEAD` nor a local `main` --
+  // but it does have the remote-tracking branch itself.
+  'refs/remotes/origin/main',
+  'refs/remotes/origin/master'
+];
+
+/**
+ * The branch checked out here, or nothing when HEAD is detached.
+ *
+ * Needed only to exclude this branch from the fork-point search below; a
+ * detached HEAD has no name to exclude and needs none.
+ */
+async function currentBranch(root: string): Promise<string | undefined> {
+  try {
+    return (await git(root, ['symbolic-ref', '--quiet', '--short', 'HEAD'])).trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Where this branch left every *other* branch in the repository.
+ *
+ * The named refs above cover the repositories that follow a convention. This
+ * covers the ones that do not: `develop`, `trunk`, a default branch that is
+ * none of the four names, a remote that is not called `origin`. Rather than
+ * guess at a name, ask git which commits are on this branch and on nothing
+ * else, and take the commit just outside that set.
+ *
+ * `--boundary` prints those outside commits, prefixed with `-`. The first is
+ * the nearest one, which is the fork point. No boundary at all means this
+ * branch shares history with nothing else -- a repository with a single branch
+ * and no remote -- and there is genuinely no fork point to find.
+ *
+ * `--exclude` applies only to the ref-glob that follows it, so each of
+ * `--branches` and `--remotes` needs its own -- and the pattern is matched
+ * against the name *after* that glob's prefix, not the full ref path.
+ * `--exclude=refs/heads/x --branches` matches nothing at all and fails silently,
+ * leaving this branch in its own exclusion set and the range empty. It is
+ * `x` for `--branches` and `<any remote>/x` for `--remotes`.
+ */
+async function forkPoint(root: string, branch: string | undefined): Promise<string | undefined> {
+  const args = ['rev-list', '--boundary', '--max-count=1000', 'HEAD', '--not'];
+  if (branch) {
+    args.push(`--exclude=${branch}`);
+  }
+  args.push('--branches');
+  if (branch) {
+    args.push(`--exclude=*/${branch}`);
+  }
+  args.push('--remotes');
+
+  try {
+    const out = await git(root, args);
+    for (const line of out.split('\n')) {
+      if (line.startsWith('-')) {
+        return line.slice(1).trim() || undefined;
+      }
+    }
+  } catch {
+    // A repository with no refs beyond this one. Nothing to fall back to.
+  }
+  return undefined;
+}
 
 /**
  * The branch this repository integrates into, if it is called something else.
@@ -225,9 +309,18 @@ async function startingPoint(root: string): Promise<string | null | undefined> {
     }
   }
 
-  // Nothing to diverge from: a repository with no remote and no main or
-  // master, which includes every one that has just been started. Everything on
-  // this branch is this session's work.
+  // No conventional name resolved. Ask git where this branch actually left
+  // the others, which needs no naming convention at all.
+  const fork = await forkPoint(root, await currentBranch(root));
+  if (fork) {
+    return fork;
+  }
+
+  // Nothing to diverge from: a repository with a single branch and no remote,
+  // which includes every one that has just been started. There is no way to
+  // tell this session's work from the repository's, and the view says so
+  // rather than claiming the whole history is this session's -- see
+  // `UNANCHORED_MAX`.
   return null;
 }
 
@@ -348,6 +441,9 @@ async function commitsSince(
   root: string,
   sha: string | null
 ): Promise<{ commits: BaselineCommit[]; more: boolean }> {
+  // An unanchored range is the whole repository, not a session's work, and is
+  // held to a much shorter list -- see `UNANCHORED_MAX`.
+  const cap = sha ? MAX_COMMITS : UNANCHORED_MAX;
   const format = ['%H', '%s', '%an', '%at', '%P'].join(FIELD);
   const out = await git(root, [
     'log',
@@ -359,14 +455,14 @@ async function commitsSince(
     // the merge appears as the single commit it is.
     '--first-parent',
     // One more than the cap, purely to find out whether there are more.
-    `--max-count=${MAX_COMMITS + 1}`,
+    `--max-count=${cap + 1}`,
     sha ? `${sha}..HEAD` : 'HEAD'
   ]);
 
   const lines = out.split('\n').filter(line => line.trim() !== '');
-  const more = lines.length > MAX_COMMITS;
+  const more = lines.length > cap;
 
-  const commits = lines.slice(0, MAX_COMMITS).map(line => {
+  const commits = lines.slice(0, cap).map(line => {
     const [commit, subject, author, at, parents] = line.split(FIELD);
     const parented = parents ? parents.split(' ').filter(Boolean) : [];
     return {
@@ -428,6 +524,26 @@ export class Baselines implements vscode.Disposable {
 
   /** Worktrees currently working out where they began; see `ensure`. */
   private stamping = new Set<string>();
+
+  /**
+   * When each unanchored worktree was last asked again for a fork point.
+   *
+   * A provisional stamp has to be re-derived to ever resolve, but session
+   * changes arrive in bursts and `startingPoint` is several git commands. This
+   * holds the retry to once a minute per worktree, which is far more often
+   * than a repository grows its first remote and far less often than the view
+   * repaints.
+   */
+  private rechecked = new Map<string, number>();
+
+  private dueForRecheck(key: string): boolean {
+    const last = this.rechecked.get(key) ?? 0;
+    if (Date.now() - last < 60_000) {
+      return false;
+    }
+    this.rechecked.set(key, Date.now());
+    return true;
+  }
 
   /**
    * Bumped by `invalidate`, so a read that started before it cannot write its
@@ -582,7 +698,18 @@ export class Baselines implements vscode.Disposable {
     // `onDidChangeSessions` arrives in bursts, and the guard below only closes
     // once the queued write has landed -- so without this every burst re-runs
     // three git commands for every session that is not stamped yet.
-    if (this.all()[key] || this.stamping.has(key)) {
+    if (this.stamping.has(key)) {
+      return;
+    }
+    const stamped = this.all()[key];
+    // An unanchored stamp is provisional, not an answer. The repository had no
+    // fork point at the moment it was first seen -- which is true of a clone
+    // mid-fetch, of a repository before its first remote is added, and of one
+    // whose default branch has not been checked out yet. Keeping it forever
+    // means the view never recovers once the anchor exists, so it is re-derived
+    // until it resolves, throttled so a burst of session changes does not turn
+    // into a burst of git.
+    if (stamped && (stamped.sha !== null || !this.dueForRecheck(key))) {
       return;
     }
     this.stamping.add(key);
@@ -591,12 +718,22 @@ export class Baselines implements vscode.Disposable {
       if (sha === undefined) {
         return;
       }
+      if (stamped && sha === null) {
+        // Still nothing to anchor to. Leave the existing stamp alone so `at`
+        // keeps saying when this session was first seen.
+        return;
+      }
       await this.queue(async () => {
         // Read again inside the queue: another stamp may have landed while
         // this one waited, and this record holds every worktree.
         const all = this.all();
-        if (all[key]) {
+        if (all[key] && all[key].sha !== null) {
           return;
+        }
+        // An anchor found later replaces a provisional one, so the cached
+        // reading taken against the whole history has to go with it.
+        if (all[key]) {
+          this.invalidate();
         }
         await this.memento.update(KEY, { ...all, [key]: { sha, at: Date.now() } });
           log(

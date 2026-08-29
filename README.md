@@ -45,7 +45,13 @@ macOS or Linux; Windows falls back to shell integration.
 
 The last group in the Changes view. A session's origin is where its branch left
 the integration branch — `origin/HEAD`, then `main`, then `master`, or whatever
-`parallelo.baselineBranch` names.
+`parallelo.baselineBranch` names. If the repository uses none of those names,
+Parallelo asks git where this branch left every *other* branch, so `develop`,
+`trunk` and house styles work without configuring anything.
+
+A repository with a single branch and no remote has no fork point at all. There
+the group says **whole branch** and lists only the most recent commits, because
+none of them can be told apart from this session's work.
 
 The groups above lose a file the moment an agent commits it, which is exactly
 when you most want to see what it did. Click any file for its diff across that
@@ -121,7 +127,7 @@ though one whose shell has not reported a directory yet may take a moment.
 
 | Setting | Default | What it does |
 |---|---|---|
-| `parallelo.agents` | Claude Code, Codex, Shell | Agents offered when starting a session |
+| `parallelo.agents` | Claude Code, Codex, GitHub Copilot, Shell | Agents offered when starting a session |
 | `parallelo.worktreePath` | `.worktrees` | Where new worktrees go, relative to the repo root |
 | `parallelo.branchPrefix` | `session/` | Prefix for branches created for new sessions |
 | `parallelo.autoOpenRepository` | `true` | Register a worktree with git when a terminal enters it |
