@@ -230,17 +230,105 @@ async function forkPoint(root: string, branch: string | undefined): Promise<stri
   }
   args.push('--remotes');
 
+  let out: string;
   try {
-    const out = await git(root, args);
-    for (const line of out.split('\n')) {
-      if (line.startsWith('-')) {
-        return line.slice(1).trim() || undefined;
-      }
-    }
+    out = await git(root, args);
   } catch {
-    // A repository with no refs beyond this one. Nothing to fall back to.
+    return undefined;
+  }
+
+  for (const line of out.split('\n')) {
+    if (line.startsWith('-')) {
+      return line.slice(1).trim() || undefined;
+    }
+  }
+
+  // No boundary, and two very different reasons for it.
+  //
+  // Every commit reachable from HEAD is also on some other branch: this
+  // session has nothing of its own yet, or its work has already been merged
+  // somewhere. The answer is HEAD -- an empty list, which is true -- and
+  // emphatically not "no anchor", which would put the entire repository under
+  // the heading instead. This is the ordinary state of a worktree that was
+  // just created and has not been committed in.
+  //
+  // Or there are no other refs at all, and the question cannot be answered
+  // from the repository's shape. That falls through to the named branches.
+  if (await hasOtherRefs(root, branch)) {
+    return (await git(root, ['rev-parse', 'HEAD'])).trim() || undefined;
   }
   return undefined;
+}
+
+/**
+ * Where this worktree began, according to git's record of this worktree.
+ *
+ * A linked worktree gets its own HEAD reflog, written the moment `git worktree
+ * add` creates it and appended to by every commit, reset and checkout made
+ * *in that worktree*. Its oldest entry is therefore the exact point the
+ * session started from, recorded by git at the time rather than inferred from
+ * branch shape afterwards.
+ *
+ * This is the honest answer to "what has this session committed", and it is
+ * right in two cases branch topology gets wrong. A branch that has already
+ * been merged somewhere -- or that has a mirror branch pointing at the same
+ * commits, which some agents create -- has no commits unique to it, so
+ * topology says the session did nothing while the reflog still holds every
+ * commit it made. And a stale integration branch cannot drag in work this
+ * worktree never did, because the reflog only knows what happened here.
+ *
+ * The main checkout is excluded on purpose: its reflog reaches back to the
+ * repository's first commit, which is not a session.
+ */
+async function worktreeStart(root: string): Promise<string | undefined> {
+  try {
+    // Newest first; the last line is the oldest entry, which for a linked
+    // worktree is its creation. `--reverse` is not usable here: git applies
+    // the count before reversing, so it would return the newest.
+    const out = await git(root, ['log', '-g', '--format=%H', 'HEAD']);
+    const entries = out
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean);
+    return entries[entries.length - 1];
+  } catch {
+    // No reflog, or reflogs disabled. Every other rule still applies.
+    return undefined;
+  }
+}
+
+/** The merge base against one ref, or nothing if it does not resolve. */
+async function baseAgainst(root: string, ref: string): Promise<string | undefined> {
+  try {
+    await git(root, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
+  } catch {
+    return undefined;
+  }
+  try {
+    return (await git(root, ['merge-base', 'HEAD', ref])).trim() || undefined;
+  } catch {
+    // Unrelated histories.
+    return undefined;
+  }
+}
+
+/** Whether any branch or remote-tracking ref exists besides this one. */
+async function hasOtherRefs(root: string, branch: string | undefined): Promise<boolean> {
+  try {
+    const out = await git(root, [
+      'for-each-ref',
+      '--format=%(refname:short)',
+      'refs/heads',
+      'refs/remotes'
+    ]);
+    return out
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+      .some(name => !branch || (name !== branch && !name.endsWith(`/${branch}`)));
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -281,7 +369,10 @@ function configuredRef(): string | undefined {
  * the integration branch is a different case and does come back as HEAD, via
  * the merge base, which is correct -- it has nothing of its own yet.
  */
-async function startingPoint(root: string): Promise<string | null | undefined> {
+async function startingPoint(
+  root: string,
+  linked: boolean
+): Promise<string | null | undefined> {
   try {
     await git(root, ['rev-parse', 'HEAD']);
   } catch {
@@ -289,31 +380,44 @@ async function startingPoint(root: string): Promise<string | null | undefined> {
     return undefined;
   }
 
+  // A configured branch is somebody stating the answer, so it outranks
+  // anything derived.
   const configured = configuredRef();
-  const candidates = configured ? [configured, ...INTEGRATION_REFS] : INTEGRATION_REFS;
-
-  for (const ref of candidates) {
-    try {
-      await git(root, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
-    } catch {
-      continue;
-    }
-    try {
-      const base = (await git(root, ['merge-base', 'HEAD', ref])).trim();
-      if (base) {
-        return base;
-      }
-    } catch {
-      // Unrelated histories. Another candidate will not do better.
-      break;
+  if (configured) {
+    const base = await baseAgainst(root, configured);
+    if (base) {
+      return base;
     }
   }
 
-  // No conventional name resolved. Ask git where this branch actually left
-  // the others, which needs no naming convention at all.
+  // Then what git itself recorded about this worktree, which beats anything
+  // inferred from branch shape -- it is the session, written down.
+  if (linked) {
+    const started = await worktreeStart(root);
+    if (started) {
+      return started;
+    }
+  }
+
+  // Then the repository's own shape, before any guessed name.
+  //
+  // Names are a guess, and a wrong guess here is expensive: `origin/HEAD`
+  // pointing at a branch the team stopped merging into 141 commits ago listed
+  // all 141 as this session's work. Asking where this branch actually left the
+  // others cannot be stale in that way -- it is measured against what the
+  // repository contains rather than against what a branch is called.
   const fork = await forkPoint(root, await currentBranch(root));
   if (fork) {
     return fork;
+  }
+
+  // Only now the conventional names, for a repository whose shape says nothing
+  // -- a single branch with a remote it has diverged from, most often.
+  for (const ref of INTEGRATION_REFS) {
+    const base = await baseAgainst(root, ref);
+    if (base) {
+      return base;
+    }
   }
 
   // Nothing to diverge from: a repository with a single branch and no remote,
@@ -714,7 +818,7 @@ export class Baselines implements vscode.Disposable {
     }
     this.stamping.add(key);
     try {
-      const sha = await startingPoint(repository.rootUri.fsPath);
+      const sha = await startingPoint(repository.rootUri.fsPath, session.linked === true);
       if (sha === undefined) {
         return;
       }
