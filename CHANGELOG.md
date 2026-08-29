@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.1.4] - 2026-08-29
+
+### Fixed
+- **Session commits, properly this time.** Three releases tried to work out
+  what a session had committed by reasoning about branches — where this branch
+  left `main`, or `origin/HEAD`, or every other branch. Every one of them was
+  wrong somewhere, because a branch is not a session. The reports that came
+  back: a repository whose whole history was listed, a worktree showing 74
+  commits after a restart, a checkout that had committed nothing showing three
+  merges.
+
+  It is now read rather than inferred. Every linked worktree keeps its own log
+  of what happened inside it, and the group lists the entries that are commits.
+  Nothing else can affect it.
+
+  Three things follow, all of them reported:
+
+  - **Merges are never listed.** A merge that arrived by `git pull` is not a
+    commit this session wrote, so the rows are the messages somebody typed
+    rather than `Merge pull request #221`.
+  - **A terminal in the main checkout has no group at all.** It is not a
+    session, and its log reaches back to the repository's first commit.
+  - **A wrong answer can no longer survive a restart.** Nothing derived is
+    written to disk any more. Storing the answer is what let one repository
+    stay wrong across three fixes; the only thing saved now is an explicit
+    baseline reset.
+
+### Removed
+- `parallelo.baselineBranch`. There is no branch to name any more.
+
+
 ## [0.1.3] - 2026-08-29
 
 ### Fixed

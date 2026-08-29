@@ -1,4 +1,9 @@
 .vscode/**
+# `.worktrees` is this extension's own default worktree location, so a
+# developer using it on itself has entire checkouts sitting inside the
+# package directory. One of them was packaged before this line existed.
+.worktrees/**
+.claude/**
 docs/**
 src/**
 node_modules/**

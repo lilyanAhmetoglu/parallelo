@@ -18,7 +18,7 @@ const run = promisify(execFile);
  * left where they lie -- a stamp is re-derived from the branch point on sight,
  * which costs one `merge-base`.
  */
-const KEY = 'parallelo.baselines.v2';
+const KEY = 'parallelo.baselines.v3';
 
 /**
  * How many commits the group lists before it starts counting instead.
@@ -28,37 +28,19 @@ const KEY = 'parallelo.baselines.v2';
  */
 const MAX_COMMITS = 100;
 
-/**
- * How many commits are listed when there is nothing to measure from.
- *
- * A repository with a single branch and no remote gives no fork point, so
- * every commit in it is indistinguishable from this session's work. Listing
- * all of them was the first answer and it is wrong in the ordinary case:
- * opening the extension in an existing project put a hundred and fifty commits
- * of somebody's history under a heading that claims they are this session's.
- * That is not a long list, it is a false one.
- *
- * A small number still helps the case the fallback exists for -- a repository
- * started an hour ago, where the whole history *is* the session -- and the
- * header says plainly when it is showing this rather than a real range.
- */
-const UNANCHORED_MAX = 20;
 
 /** Field separator inside one `git log` record. Never occurs in a subject. */
 const FIELD = '\x1f';
 
+/**
+ * An explicit "start again from here", and nothing else.
+ *
+ * Derived answers are never stored. Storing them is what let a wrong reading
+ * survive restarts, and three fixes, in a repository that had long since been
+ * re-derived correctly everywhere else.
+ */
 interface Baseline {
-  /**
-   * Commit this session's work is measured from.
-   *
-   * `null` means the beginning of history: a repository with no integration
-   * branch to diverge from has nothing to subtract, so everything on this
-   * branch is the session's work. Falling back to HEAD instead put the
-   * session's own commits behind the mark and showed nothing at all -- which
-   * is the failure this whole mark exists to avoid.
-   */
-  sha: string | null;
-  /** When it was stamped, so the view can say what "since" means. */
+  /** Commits made before this are not this session's any more. */
   at: number;
 }
 
@@ -99,8 +81,7 @@ export interface BaselineCommit {
 }
 
 export interface BaselineState {
-  /** The stamped commit this reading is measured from, or the whole history. */
-  sha: string | null;
+  /** When the baseline was last reset, or 0 if it never has been. */
   at: number;
   /**
    * HEAD when this reading was taken.
@@ -130,15 +111,6 @@ export interface BaselineState {
    * structurally incapable of ever exceeding one.
    */
   more: boolean;
-  /**
-   * Whether the stamped commit is no longer in the repository.
-   *
-   * A hard reset, a branch deleted and recreated, or a worktree removed and
-   * remade under the same path all leave a sha nothing can be diffed against.
-   * There is nothing to show and nothing wrong with the code, so it is a state
-   * to report and offer a reset for, not an error.
-   */
-  missing: boolean;
 }
 
 async function git(cwd: string, args: string[]): Promise<string> {
@@ -146,325 +118,15 @@ async function git(cwd: string, args: string[]): Promise<string> {
   return stdout;
 }
 
-/**
- * Whether a commit is still in this repository.
- *
- * `^{commit}` rather than a bare sha so a tag or a tree object cannot pass for
- * one, and `cat-file -e` because it says yes or no without printing anything.
- */
-async function commitExists(root: string, sha: string): Promise<boolean> {
-  try {
-    await git(root, ['cat-file', '-e', `${sha}^{commit}`]);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
-/**
- * Refs tried, in order, as the branch this session diverged from.
- *
- * `origin/HEAD` is the remote's default branch and is the right answer
- * whenever there is a remote. The two local names are for a repository that
- * has never had one, which is most test fixtures and some real work.
- *
- * The branch's own upstream is deliberately not consulted. It is unset on a
- * fresh session branch, and once the agent pushes it becomes that same branch
- * -- so the merge base would be HEAD and the whole list would empty out at the
- * moment the work was published.
- */
-const INTEGRATION_REFS = [
-  'refs/remotes/origin/HEAD',
-  'refs/heads/main',
-  'refs/heads/master',
-  // A clone made with `--single-branch`, or one whose default branch has never
-  // been checked out locally, has neither `origin/HEAD` nor a local `main` --
-  // but it does have the remote-tracking branch itself.
-  'refs/remotes/origin/main',
-  'refs/remotes/origin/master'
-];
 
-/**
- * The branch checked out here, or nothing when HEAD is detached.
- *
- * Needed only to exclude this branch from the fork-point search below; a
- * detached HEAD has no name to exclude and needs none.
- */
-async function currentBranch(root: string): Promise<string | undefined> {
-  try {
-    return (await git(root, ['symbolic-ref', '--quiet', '--short', 'HEAD'])).trim() || undefined;
-  } catch {
-    return undefined;
-  }
-}
 
-/**
- * Where this branch left every *other* branch in the repository.
- *
- * The named refs above cover the repositories that follow a convention. This
- * covers the ones that do not: `develop`, `trunk`, a default branch that is
- * none of the four names, a remote that is not called `origin`. Rather than
- * guess at a name, ask git which commits are on this branch and on nothing
- * else, and take the commit just outside that set.
- *
- * `--boundary` prints those outside commits, prefixed with `-`. The first is
- * the nearest one, which is the fork point. No boundary at all means this
- * branch shares history with nothing else -- a repository with a single branch
- * and no remote -- and there is genuinely no fork point to find.
- *
- * `--exclude` applies only to the ref-glob that follows it, so each of
- * `--branches` and `--remotes` needs its own -- and the pattern is matched
- * against the name *after* that glob's prefix, not the full ref path.
- * `--exclude=refs/heads/x --branches` matches nothing at all and fails silently,
- * leaving this branch in its own exclusion set and the range empty. It is
- * `x` for `--branches` and `<any remote>/x` for `--remotes`.
- */
-async function forkPoint(root: string, branch: string | undefined): Promise<string | undefined> {
-  const args = ['rev-list', '--boundary', '--max-count=1000', 'HEAD', '--not'];
-  if (branch) {
-    args.push(`--exclude=${branch}`);
-  }
-  args.push('--branches');
-  if (branch) {
-    args.push(`--exclude=*/${branch}`);
-  }
-  args.push('--remotes');
 
-  let out: string;
-  try {
-    out = await git(root, args);
-  } catch {
-    return undefined;
-  }
 
-  for (const line of out.split('\n')) {
-    if (line.startsWith('-')) {
-      return line.slice(1).trim() || undefined;
-    }
-  }
 
-  // No boundary, and two very different reasons for it.
-  //
-  // Every commit reachable from HEAD is also on some other branch: this
-  // session has nothing of its own yet, or its work has already been merged
-  // somewhere. The answer is HEAD -- an empty list, which is true -- and
-  // emphatically not "no anchor", which would put the entire repository under
-  // the heading instead. This is the ordinary state of a worktree that was
-  // just created and has not been committed in.
-  //
-  // Or there are no other refs at all, and the question cannot be answered
-  // from the repository's shape. That falls through to the named branches.
-  if (await hasOtherRefs(root, branch)) {
-    return (await git(root, ['rev-parse', 'HEAD'])).trim() || undefined;
-  }
-  return undefined;
-}
 
-/**
- * Where this worktree began, according to git's record of this worktree.
- *
- * A linked worktree gets its own HEAD reflog, written the moment `git worktree
- * add` creates it and appended to by every commit, reset and checkout made
- * *in that worktree*. Its oldest entry is therefore the exact point the
- * session started from, recorded by git at the time rather than inferred from
- * branch shape afterwards.
- *
- * This is the honest answer to "what has this session committed", and it is
- * right in two cases branch topology gets wrong. A branch that has already
- * been merged somewhere -- or that has a mirror branch pointing at the same
- * commits, which some agents create -- has no commits unique to it, so
- * topology says the session did nothing while the reflog still holds every
- * commit it made. And a stale integration branch cannot drag in work this
- * worktree never did, because the reflog only knows what happened here.
- *
- * The main checkout is excluded on purpose: its reflog reaches back to the
- * repository's first commit, which is not a session.
- */
-async function worktreeStart(root: string): Promise<string | undefined> {
-  try {
-    // Newest first; the last line is the oldest entry, which for a linked
-    // worktree is its creation. `--reverse` is not usable here: git applies
-    // the count before reversing, so it would return the newest.
-    const out = await git(root, ['log', '-g', '--format=%H', 'HEAD']);
-    const entries = out
-      .split('\n')
-      .map(line => line.trim())
-      .filter(Boolean);
-    return entries[entries.length - 1];
-  } catch {
-    // No reflog, or reflogs disabled. Every other rule still applies.
-    return undefined;
-  }
-}
 
-/** The merge base against one ref, or nothing if it does not resolve. */
-async function baseAgainst(root: string, ref: string): Promise<string | undefined> {
-  try {
-    await git(root, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
-  } catch {
-    return undefined;
-  }
-  try {
-    return (await git(root, ['merge-base', 'HEAD', ref])).trim() || undefined;
-  } catch {
-    // Unrelated histories.
-    return undefined;
-  }
-}
 
-/** Whether any branch or remote-tracking ref exists besides this one. */
-async function hasOtherRefs(root: string, branch: string | undefined): Promise<boolean> {
-  try {
-    const out = await git(root, [
-      'for-each-ref',
-      '--format=%(refname:short)',
-      'refs/heads',
-      'refs/remotes'
-    ]);
-    return out
-      .split('\n')
-      .map(line => line.trim())
-      .filter(Boolean)
-      .some(name => !branch || (name !== branch && !name.endsWith(`/${branch}`)));
-  } catch {
-    return false;
-  }
-}
-
-/**
- * The branch this repository integrates into, if it is called something else.
- *
- * `develop`, `trunk`, and every house style that is neither `main` nor
- * `master`. Tried before the defaults, and ignored if it does not resolve.
- */
-function configuredRef(): string | undefined {
-  const named = vscode.workspace
-    .getConfiguration('parallelo')
-    .get<string>('baselineBranch', '')
-    .trim();
-  return named || undefined;
-}
-
-/**
- * Where this session's work began.
- *
- * Not HEAD. Stamping HEAD means a worktree that already has commits when it is
- * first seen starts with an empty range: the work is behind the mark, the
- * group shows nothing, and the feature looks broken at exactly the moment
- * somebody is trying it. That is not a rare case -- it is every worktree the
- * extension did not watch being created.
- *
- * So: the point where this branch left the integration branch. Not the branch
- * the main *worktree* is currently on, which was the first attempt and is
- * wrong in a way that is easy to miss -- anyone who checks out a feature
- * branch in their main checkout moves the origin of every session stamped
- * afterwards, and the range then fills with commits nobody in this window
- * wrote. Refs are shared by every worktree of a repository, so the branch can
- * be named from in here without going and finding its directory.
- *
- * When none of the candidates exist there is nothing to subtract, so the
- * answer is the whole history rather than HEAD. Falling back to HEAD is what
- * this function was written to prevent: it marks the session as having done
- * nothing, which is the one answer that is never useful. A session that *is*
- * the integration branch is a different case and does come back as HEAD, via
- * the merge base, which is correct -- it has nothing of its own yet.
- */
-async function startingPoint(
-  root: string,
-  linked: boolean
-): Promise<string | null | undefined> {
-  try {
-    await git(root, ['rev-parse', 'HEAD']);
-  } catch {
-    // No commits at all. There is nothing to measure from yet.
-    return undefined;
-  }
-
-  // A configured branch is somebody stating the answer, so it outranks
-  // anything derived.
-  const configured = configuredRef();
-  if (configured) {
-    const base = await baseAgainst(root, configured);
-    if (base) {
-      return base;
-    }
-  }
-
-  // Then what git itself recorded about this worktree, which beats anything
-  // inferred from branch shape -- it is the session, written down.
-  if (linked) {
-    const started = await worktreeStart(root);
-    if (started) {
-      return started;
-    }
-  }
-
-  // Then the repository's own shape, before any guessed name.
-  //
-  // Names are a guess, and a wrong guess here is expensive: `origin/HEAD`
-  // pointing at a branch the team stopped merging into 141 commits ago listed
-  // all 141 as this session's work. Asking where this branch actually left the
-  // others cannot be stale in that way -- it is measured against what the
-  // repository contains rather than against what a branch is called.
-  const fork = await forkPoint(root, await currentBranch(root));
-  if (fork) {
-    return fork;
-  }
-
-  // Only now the conventional names, for a repository whose shape says nothing
-  // -- a single branch with a remote it has diverged from, most often.
-  for (const ref of INTEGRATION_REFS) {
-    const base = await baseAgainst(root, ref);
-    if (base) {
-      return base;
-    }
-  }
-
-  // Nothing to diverge from: a repository with a single branch and no remote,
-  // which includes every one that has just been started. There is no way to
-  // tell this session's work from the repository's, and the view says so
-  // rather than claiming the whole history is this session's -- see
-  // `UNANCHORED_MAX`.
-  return null;
-}
-
-/**
- * Every path this session's own commits touched, in one command.
- *
- * The radar needs a flat set and nothing else, so it does not pay for the
- * per-commit breakdown the tree shows. It used to: one `diff-tree` per commit,
- * a hundred of them at once, times a worktree each -- enough concurrent
- * processes to hit `EMFILE`, which arrived as baselines silently not working.
- *
- * `--no-renames` on purpose, the opposite of the tree's `-M`. Rename detection
- * would report only the new name, and the old one is exactly what another
- * session still calls the file it is editing -- the conflict most worth
- * catching. Without detection a rename arrives as a delete and an add, so both
- * names land in the set.
- *
- * `--no-merges` and `--first-parent` for the reasons in `commitsSince`: a
- * merge authors nothing, and the branch it carried is not this session's work.
- */
-async function pathsTouched(root: string, sha: string | null): Promise<Set<string>> {
-  const out = await git(root, [
-    'log',
-    '--first-parent',
-    '--no-merges',
-    '--no-renames',
-    '--format=',
-    '--name-only',
-    '-z',
-    sha ? `${sha}..HEAD` : 'HEAD'
-  ]);
-  const files = new Set<string>();
-  for (const entry of out.split('\0')) {
-    const trimmed = entry.trim();
-    if (trimmed) {
-      files.add(trimmed);
-    }
-  }
-  return files;
-}
 
 /**
  * Files one commit touched, as git recorded them.
@@ -541,46 +203,128 @@ async function filesIn(root: string, sha: string): Promise<BaselineFile[]> {
  * guessing where one ends, which is not worth saving a process per commit on a
  * list this short.
  */
-async function commitsSince(
+/**
+ * How far back through a worktree's log to look for its commits.
+ *
+ * Only entries still reachable from HEAD are kept, and the reachability check
+ * is one `rev-list` of this depth. A session that has made a commit more than
+ * this many commits ago has had `main` merged into it repeatedly; the recent
+ * ones are the answer to "what is this agent doing".
+ */
+const REACHABLE_DEPTH = 2000;
+
+/**
+ * Every commit made *in this worktree*, newest first.
+ *
+ * This is the whole feature, and it is read rather than inferred. `git log -g`
+ * walks the worktree's own HEAD reflog, and each entry says what changed HEAD:
+ * `commit:` for a commit made here, `pull:` / `merge:` / `checkout:` /
+ * `reset:` for everything else. Keeping only the `commit:` entries gives
+ * exactly the commits this session authored -- which is what was asked for,
+ * and what three attempts at deriving it from branch shape failed to produce.
+ *
+ * Two things fall out for free. A merge that arrived by `git pull` is a
+ * `pull:` entry, so **merge commits never appear**: the rows are the commit
+ * messages somebody wrote, not "Merge pull request #221". And a stale
+ * integration branch cannot drag in work this worktree never did, because the
+ * log only knows what happened here.
+ *
+ * `commit (merge):` is excluded too -- a merge made in this worktree is still
+ * a merge, and its contents are the commits it carried, which are listed on
+ * their own if they were made here.
+ *
+ * Reflog entries survive their commits: an amend or a reset leaves the old sha
+ * behind, so entries are kept only if they are still reachable from HEAD.
+ * `since` drops everything committed before an explicit baseline reset.
+ */
+async function commitsMadeHere(
   root: string,
-  sha: string | null
+  since: number | undefined
 ): Promise<{ commits: BaselineCommit[]; more: boolean }> {
-  // An unanchored range is the whole repository, not a session's work, and is
-  // held to a much shorter list -- see `UNANCHORED_MAX`.
-  const cap = sha ? MAX_COMMITS : UNANCHORED_MAX;
-  const format = ['%H', '%s', '%an', '%at', '%P'].join(FIELD);
-  const out = await git(root, [
-    'log',
-    `--format=${format}`,
-    // This branch's own line of development. Without it, merging `main` in
-    // lists every commit that came with it as though the session had made
-    // them, and puts their files into the radar's set -- flagging this
-    // worktree against every other one that has touched any of them. With it,
-    // the merge appears as the single commit it is.
-    '--first-parent',
-    // One more than the cap, purely to find out whether there are more.
-    `--max-count=${cap + 1}`,
-    sha ? `${sha}..HEAD` : 'HEAD'
-  ]);
+  const format = ['%H', '%gs', '%gd', '%s', '%an', '%at', '%P'].join(FIELD);
+  // `--date=unix` turns `%gd` into `HEAD@{1788026990}` -- when the entry was
+  // written, which is when the commit happened *here*. That is the clock a
+  // baseline reset has to be compared against: a commit's own author date can
+  // predate the worktree by days after a rebase or a cherry-pick.
+  const out = await git(root, ['log', '-g', '--date=unix', `--format=${format}`, 'HEAD']);
 
-  const lines = out.split('\n').filter(line => line.trim() !== '');
-  const more = lines.length > cap;
-
-  const commits = lines.slice(0, cap).map(line => {
-    const [commit, subject, author, at, parents] = line.split(FIELD);
+  const seen = new Set<string>();
+  const candidates: BaselineCommit[] = [];
+  for (const line of out.split('\n')) {
+    if (!line.trim()) {
+      continue;
+    }
+    const [sha, action, entry, subject, author, at, parents] = line.split(FIELD);
+    // `commit:` and `commit (initial):`, but never `commit (merge):`.
+    if (!action?.startsWith('commit') || action.startsWith('commit (merge)')) {
+      continue;
+    }
+    if (!sha || seen.has(sha)) {
+      continue;
+    }
+    seen.add(sha);
+    if (since !== undefined) {
+      const happened = Number(entry?.replace(/\D/g, '')) * 1000;
+      // Reflog times are whole seconds and the reset is a millisecond clock,
+      // so compare at the coarser of the two. Without this a commit made in
+      // the same second as the reset is dropped, which reads as the reset
+      // having eaten it.
+      if (happened && happened < Math.floor(since / 1000) * 1000) {
+        continue;
+      }
+    }
+    const when = Number(at) * 1000;
     const parented = parents ? parents.split(' ').filter(Boolean) : [];
-    return {
-      sha: commit,
+    candidates.push({
+      sha,
       subject: subject || '(no message)',
       author,
-      at: Number(at) * 1000,
+      at: when,
       parent: parented[0],
       merge: parented.length > 1
-    };
-  });
+    });
+  }
 
-  return { commits, more };
+  if (!candidates.length) {
+    return { commits: [], more: false };
+  }
+
+  const reachable = new Set(
+    (await git(root, ['rev-list', `--max-count=${REACHABLE_DEPTH}`, 'HEAD']))
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+  );
+  const live = candidates.filter(commit => reachable.has(commit.sha));
+
+  return { commits: live.slice(0, MAX_COMMITS), more: live.length > MAX_COMMITS };
 }
+
+/** Every path a known list of commits touched, in one command. */
+async function pathsIn(root: string, commits: BaselineCommit[]): Promise<Set<string>> {
+  const files = new Set<string>();
+  if (!commits.length) {
+    return files;
+  }
+  const out = await git(root, [
+    'log',
+    // The shas are given explicitly, so walk none of their ancestors.
+    '--no-walk=unsorted',
+    '--no-renames',
+    '--format=',
+    '--name-only',
+    '-z',
+    ...commits.map(commit => commit.sha)
+  ]);
+  for (const entry of out.split('\0')) {
+    const trimmed = entry.trim();
+    if (trimmed) {
+      files.add(trimmed);
+    }
+  }
+  return files;
+}
+
 
 /**
  * What a session has committed since it started.
@@ -626,28 +370,7 @@ export class Baselines implements vscode.Disposable {
   private commitFiles = new Map<string, BaselineFile[]>();
   private commitFilesInFlight = new Map<string, Promise<BaselineFile[]>>();
 
-  /** Worktrees currently working out where they began; see `ensure`. */
-  private stamping = new Set<string>();
 
-  /**
-   * When each unanchored worktree was last asked again for a fork point.
-   *
-   * A provisional stamp has to be re-derived to ever resolve, but session
-   * changes arrive in bursts and `startingPoint` is several git commands. This
-   * holds the retry to once a minute per worktree, which is far more often
-   * than a repository grows its first remote and far less often than the view
-   * repaints.
-   */
-  private rechecked = new Map<string, number>();
-
-  private dueForRecheck(key: string): boolean {
-    const last = this.rechecked.get(key) ?? 0;
-    if (Date.now() - last < 60_000) {
-      return false;
-    }
-    this.rechecked.set(key, Date.now());
-    return true;
-  }
 
   /**
    * Bumped by `invalidate`, so a read that started before it cannot write its
@@ -784,70 +507,17 @@ export class Baselines implements vscode.Disposable {
   }
 
   /**
-   * Stamp this session's starting commit, if it has never been stamped.
+   * Kept as a no-op: there is nothing to stamp any more.
    *
-   * The commit stamped is where the branch diverged, not HEAD -- see
-   * `startingPoint`, and the whole reason it exists.
-   *
-   * Silent when the repository has not resolved yet or has no commits at all:
-   * an empty repository has no HEAD to record, and stamping the wrong thing is
-   * worse than stamping later.
+   * Every earlier version recorded where it thought a session began and read
+   * that record back afterwards. That is what made the bug survive three
+   * fixes -- a wrong answer written to disk is restored on every reload, so
+   * the view stayed wrong in a repository long after the rule that produced
+   * it was gone. A session's commits are now derived from the worktree's own
+   * log on every reading, and the only thing stored is an explicit reset.
    */
-  async ensure(session: Session): Promise<void> {
-    const repository = session.repository;
-    if (!repository?.state.HEAD?.commit) {
-      return;
-    }
-    const key = this.keyFor(session);
-    // `onDidChangeSessions` arrives in bursts, and the guard below only closes
-    // once the queued write has landed -- so without this every burst re-runs
-    // three git commands for every session that is not stamped yet.
-    if (this.stamping.has(key)) {
-      return;
-    }
-    const stamped = this.all()[key];
-    // An unanchored stamp is provisional, not an answer. The repository had no
-    // fork point at the moment it was first seen -- which is true of a clone
-    // mid-fetch, of a repository before its first remote is added, and of one
-    // whose default branch has not been checked out yet. Keeping it forever
-    // means the view never recovers once the anchor exists, so it is re-derived
-    // until it resolves, throttled so a burst of session changes does not turn
-    // into a burst of git.
-    if (stamped && (stamped.sha !== null || !this.dueForRecheck(key))) {
-      return;
-    }
-    this.stamping.add(key);
-    try {
-      const sha = await startingPoint(repository.rootUri.fsPath, session.linked === true);
-      if (sha === undefined) {
-        return;
-      }
-      if (stamped && sha === null) {
-        // Still nothing to anchor to. Leave the existing stamp alone so `at`
-        // keeps saying when this session was first seen.
-        return;
-      }
-      await this.queue(async () => {
-        // Read again inside the queue: another stamp may have landed while
-        // this one waited, and this record holds every worktree.
-        const all = this.all();
-        if (all[key] && all[key].sha !== null) {
-          return;
-        }
-        // An anchor found later replaces a provisional one, so the cached
-        // reading taken against the whole history has to go with it.
-        if (all[key]) {
-          this.invalidate();
-        }
-        await this.memento.update(KEY, { ...all, [key]: { sha, at: Date.now() } });
-          log(
-          `baseline: ${key} starts at ${sha ? sha.slice(0, 8) : 'the beginning of history'}`
-        );
-        this._onDidChange.fire();
-      });
-    } finally {
-      this.stamping.delete(key);
-    }
+  async ensure(_session: Session): Promise<void> {
+    return;
   }
 
   /**
@@ -858,16 +528,16 @@ export class Baselines implements vscode.Disposable {
    * "where did this branch begin".
    */
   async reset(session: Session): Promise<boolean> {
-    const sha = session.repository?.state.HEAD?.commit;
-    if (!sha) {
+    if (!session.repository?.state.HEAD?.commit) {
       return false;
     }
     const key = this.keyFor(session);
+    const at = Date.now();
     await this.queue(async () => {
-      await this.memento.update(KEY, { ...this.all(), [key]: { sha, at: Date.now() } });
+      await this.memento.update(KEY, { ...this.all(), [key]: { at } });
     });
     this.invalidate();
-    log(`baseline: ${key} re-armed at ${sha.slice(0, 8)}`);
+    log(`baseline: ${key} re-armed, hiding commits made before now`);
     this._onDidChange.fire();
     return true;
   }
@@ -932,6 +602,13 @@ export class Baselines implements vscode.Disposable {
       return running;
     }
 
+    if (session.linked !== true) {
+      // The main checkout is not a session. Its log reaches back to the
+      // repository's first commit, and every rule that tried to carve a
+      // session out of it produced commits nobody in the window wrote.
+      return undefined;
+    }
+
     const generation = this.generation;
     const work = this.readNow(key, repository, head, generation)
       .catch(error => {
@@ -949,42 +626,25 @@ export class Baselines implements vscode.Disposable {
     head: string,
     generation: number
   ): Promise<BaselineState | undefined> {
-    const stamp = this.all()[key];
-    if (!stamp) {
-      return undefined;
-    }
     const root = repository.rootUri.fsPath;
-
-    // Nothing to verify when the mark is the beginning of history.
-    const state: BaselineState = (stamp.sha === null || (await commitExists(root, stamp.sha)))
-      ? await this.readCommits(root, stamp, head)
-      : {
-          sha: stamp.sha,
-          at: stamp.at,
-          head,
-          commits: [],
-          files: new Set<string>(),
-          more: false,
-          missing: true
-        };
-
-    // A reading invalidated while it was running describes a baseline that no
-    // longer applies, and caching it would hide the change until the next one.
+    // The only thing ever stored is an explicit reset: "I have reviewed that,
+    // start again from here". Everything else is derived on the spot, because
+    // a derived answer saved to disk is a wrong answer waiting to be restored
+    // -- which is exactly what survived three fixes.
+    const reset = this.all()[key];
+    const { commits, more } = await commitsMadeHere(root, reset?.at);
+    const files = await pathsIn(root, commits);
+    const state: BaselineState = {
+      at: reset?.at ?? 0,
+      head,
+      commits,
+      files,
+      more
+    };
     if (generation === this.generation) {
       this.cache.set(key, state);
     }
     return state;
   }
 
-  private async readCommits(
-    root: string,
-    stamp: Baseline,
-    head: string
-  ): Promise<BaselineState> {
-    const [{ commits, more }, files] = await Promise.all([
-      commitsSince(root, stamp.sha),
-      pathsTouched(root, stamp.sha)
-    ]);
-    return { sha: stamp.sha, at: stamp.at, head, commits, files, more, missing: false };
-  }
 }

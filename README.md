@@ -43,27 +43,25 @@ macOS or Linux; Windows falls back to shell integration.
 
 ### Session commits
 
-The last group in the Changes view: what this session committed, and nothing
-else.
+The last group in the Changes view: **the commits this worktree made**, newest
+first, each with the files it touched.
 
-For a worktree, that is read from git's own record of it. Every linked worktree
-keeps its own log of what happened inside it, so the session starts where the
-worktree started — not where a branch name suggests. This holds up when a branch
-has already been merged, when an agent leaves a mirror branch pointing at the
-same commits, and when the repository's default branch is months stale. All
-three make branch shape say a session did nothing while it was working.
+It is read, not inferred. Every linked worktree keeps its own log of what
+happened inside it, and Parallelo lists the entries that are commits. So:
 
-Elsewhere Parallelo falls back to where the branch left the others:
-`parallelo.baselineBranch` if you set it, then the fork point against every
-other branch, then `origin/HEAD`, `main` and `master`. A repository with one
-branch and no remote has no fork point at all — there the group says **whole
-branch** and lists only the most recent commits, because none of them can be
-told apart from this session's work.
+- **Merges are never rows.** A merge that arrived by `git pull` is not a commit
+  this session wrote. You see the messages somebody typed, not `Merge pull
+  request #221`.
+- **Nothing another branch did can appear.** A stale default branch, a branch
+  already merged, an agent that leaves a mirror branch — none of them can add
+  or remove a row, because none of them is in this worktree's log.
 
-The groups above lose a file the moment an agent commits it, which is exactly
-when you most want to see what it did. Click any file for its diff across that
-commit. **Reset Session Baseline to Now** re-arms the group once you have
-reviewed.
+**Reset Session Baseline to Now** hides everything up to this point, for when
+you have reviewed what an agent did and want to watch what it does next.
+
+The group is for **worktree sessions only**. A terminal in the main checkout
+does not get one: its log reaches back to the repository's first commit, which
+is not a session.
 
 ### Conflict radar
 
@@ -142,8 +140,7 @@ though one whose shell has not reported a directory yet may take a moment.
 | `parallelo.autoSessionColors` | `true` | Give each session a distinct colour automatically |
 | `parallelo.stashGuard` | `true` | Warn when the shared stash is used with more than one session live |
 | `parallelo.conflictRadar` | `true` | Mark sessions editing the same file as another session |
-| `parallelo.sessionBaseline` | `true` | List each session's own commits, and count them in the conflict radar |
-| `parallelo.baselineBranch` | — | Branch a session is taken to have left; empty means `origin/HEAD`, `main`, then `master` |
+| `parallelo.sessionBaseline` | `true` | List the commits each worktree session has made, and count them in the conflict radar |
 | `parallelo.setupCommand` | — | Command run once in a new worktree before the agent starts |
 | `parallelo.copyFiles` | `.env`, `.env.local` | Untracked files copied into each new worktree |
 | `parallelo.showStatusBar` | `true` | Show the active session's branch in the status bar |
