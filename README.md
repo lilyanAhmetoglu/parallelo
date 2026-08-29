@@ -1,53 +1,67 @@
+<div align="center">
+
+<img src="https://raw.githubusercontent.com/lilyanAhmetoglu/parallelo/main/icon.png" width="128" alt="Parallelo Session logo">
+
 # Parallelo Session
 
-**Switch terminals, and the diff follows.**
+### ⚡ Switch terminals, and the diff follows.
+
+**One window. Many agents. Each one's changes, exactly when you look at it.**
+
+[![Marketplace](https://img.shields.io/visual-studio-marketplace/v/LilyanALDIMASHKI.parallelo-session?style=for-the-badge&label=VS%20Code&labelColor=1e1e1e&color=7C5CFC)](https://marketplace.visualstudio.com/items?itemName=LilyanALDIMASHKI.parallelo-session)
+[![Open VSX](https://img.shields.io/open-vsx/v/LilyanALDIMASHKI/parallelo-session?style=for-the-badge&label=Open%20VSX&labelColor=1e1e1e&color=7C5CFC)](https://open-vsx.org/extension/LilyanALDIMASHKI/parallelo-session)
+[![Installs](https://img.shields.io/visual-studio-marketplace/i/LilyanALDIMASHKI.parallelo-session?style=for-the-badge&labelColor=1e1e1e&color=7A8291)](https://marketplace.visualstudio.com/items?itemName=LilyanALDIMASHKI.parallelo-session)
+[![MIT](https://img.shields.io/badge/licence-MIT-7A8291?style=for-the-badge&labelColor=1e1e1e)](LICENSE)
+
+<img src="https://raw.githubusercontent.com/lilyanAhmetoglu/parallelo/main/docs/demo.gif" alt="Switching between three worktree sessions: the Changes panel, the file tree, the terminal and the status bar all follow the session you pick">
+
+</div>
+
+---
+
+## 😖 The problem
 
 Run several coding agents at once — each in its own git worktree — and VS Code
 stacks every worktree together in one Source Control panel. Nothing connects the
-terminal you are working in to the diff you are looking at.
+terminal you are working in to the diff you are looking at. You hunt for the
+right repository entry every single time you switch.
 
-Parallelo adds that connection. Focus a terminal, and the Changes and Files
-views scope themselves to that terminal's worktree.
+## ✨ The fix
 
-![Switching between three worktree sessions: the Changes panel, the file tree, the terminal and the status bar all follow the session you pick](https://raw.githubusercontent.com/lilyanAhmetoglu/parallelo/main/docs/demo.gif)
+Parallelo adds that one missing connection. **Focus a terminal, and the Changes
+and Files views scope themselves to that terminal's worktree.**
 
-Three agents, three worktrees, one window. Pick a session and everything
-follows it — the diff, the file tree, the terminal, the branch in the status
-bar. The ⚠ marks two sessions that are editing the same file.
+Three agents, three worktrees, one window. Pick a session and everything follows
+it — the diff, the file tree, the terminal, the branch in the status bar. The ⚠
+marks two sessions that are editing the same file.
 
 It never asks what is running. Claude Code, Codex, aider and a plain shell all
 behave identically, because **the working directory of the process in the
 terminal is the only contract.**
 
-## What you get
+## 🎁 What you get
 
-- **Changes** — one worktree's staged and unstaged files. Native diffs, per-hunk
-  staging, discard and unstage inline.
-- **Session commits** — what this session has committed since it branched, one
-  row per commit, files underneath.
-- **Conflict radar** — two sessions editing the same file get marked before they
-  collide.
-- **Sessions** — every terminal in a worktree, with branch, drift (`↑2 ↓1`) and
-  change count. Drag to reorder, drag to pin.
-- **Files** — a file tree rooted at the active worktree.
-- **Every worktree from the start** — a terminal opens in each one when the
-  window does, so none stays invisible.
-- **Session appearance** — name, colour and icon per worktree, remembered across
-  reloads.
-- **Status bar** — active branch and change count. Click to switch session.
-- **Start Session** — creates the branch and worktree, copies your `.env`, runs
-  a setup command, launches the agent.
-- **Delete Worktree** — removes the directory, keeps the branch, always asks
-  first.
+| | |
+|---|---|
+| 🔍 **Changes** | One worktree's staged and unstaged files. Native diffs, per-hunk staging, discard and unstage inline. |
+| 📝 **Session commits** | What this session has committed since it branched, one row per commit, files underneath. |
+| ⚠️ **Conflict radar** | Two sessions editing the same file get marked before they collide. |
+| 🗂️ **Sessions** | Every terminal in a worktree, with branch, drift (`↑2 ↓1`) and change count. Drag to reorder, drag to pin. |
+| 🌲 **Files** | A file tree rooted at the active worktree. |
+| 🚀 **Every worktree from the start** | A terminal opens in each one when the window does, so none stays invisible. |
+| 🎨 **Session appearance** | Name, colour and icon per worktree, remembered across reloads. |
+| 📊 **Status bar** | Active branch and change count. Click to switch session. |
+| ➕ **Start Session** | Creates the branch and worktree, copies your `.env`, runs a setup command, launches the agent. |
+| 🗑️ **Delete Worktree** | Removes the directory, keeps the branch, always asks first. |
 
-## Requirements
+## 📦 Requirements
 
 VS Code 1.93 or newer. No runtime dependencies. Process-tree detection needs
 macOS or Linux; Windows falls back to shell integration.
 
-## How it behaves
+## 🧭 How it behaves
 
-### Session commits
+### 📝 Session commits
 
 The last group in the Changes view: **the commits this worktree made**, newest
 first, each with the files it touched.
@@ -69,7 +83,7 @@ The group is for **worktree sessions only**. A terminal in the main checkout
 does not get one: its log reaches back to the repository's first commit, which
 is not a session.
 
-### Conflict radar
+### ⚠️ Conflict radar
 
 A session that has edited a file another session has also edited *since either
 of them started* is marked three ways, so it reads at any sidebar width: the
@@ -92,7 +106,7 @@ Three things it leaves out on purpose:
 Off with `parallelo.conflictRadar`, or back to uncommitted-only with
 `parallelo.sessionBaseline`.
 
-### Agents that make their own worktree
+### 🤖 Agents that make their own worktree
 
 Some agents create a worktree and move into it — `claude --worktree` is the
 common case. The shell never moves, so its working directory still points where
@@ -110,31 +124,32 @@ picker:
 { "label": "Claude Code (own worktree)", "command": "claude --worktree" }
 ```
 
-## Things worth knowing
+## 💡 Things worth knowing
 
-**`git stash` is shared across all worktrees.** `refs/stash` lives in the common
-`.git` directory, so every worktree pushes onto one stack — one agent's `stash
-pop` will happily take work another agent stashed. Have agents commit to their
-session branch instead.
+> ⚠️ **`git stash` is shared across all worktrees.** `refs/stash` lives in the
+> common `.git` directory, so every worktree pushes onto one stack — one agent's
+> `stash pop` will happily take work another agent stashed. Have agents commit to
+> their session branch instead.
 
 Parallelo warns once per repository per window, the first time the stash is
 touched while more than one session is live. It is a warning only; the extension
 deliberately has no stash feature. Off with `parallelo.stashGuard`.
 
-**Deleting a worktree discards uncommitted work.** The branch is kept, so
+🗑️ **Deleting a worktree discards uncommitted work.** The branch is kept, so
 anything committed is safe. Anything still in the working tree is on no branch
 and goes with the directory — the confirmation tells you how many files that is.
 Nothing is ever moved into your main checkout. Use **Close Session** if you just
 want the row gone.
 
-**Worktrees isolate files, nothing else.** Ports, databases, dev servers and
+🔌 **Worktrees isolate files, nothing else.** Ports, databases, dev servers and
 `.env` state are shared. Two agents running the same dev server will fight over
 the port.
 
-**Terminals opened before the extension activates** are picked up on activation,
-though one whose shell has not reported a directory yet may take a moment.
+⏱️ **Terminals opened before the extension activates** are picked up on
+activation, though one whose shell has not reported a directory yet may take a
+moment.
 
-## Settings
+## ⚙️ Settings
 
 | Setting | Default | What it does |
 |---|---|---|
@@ -153,7 +168,7 @@ though one whose shell has not reported a directory yet may take a moment.
 | `parallelo.showMainCheckout` | `true` | List a terminal in the main checkout, not only worktree sessions |
 | `parallelo.openWorktreeTerminals` | `true` | Open a terminal in every worktree when the window starts |
 
-## Building it
+## 🔨 Building it
 
 ```bash
 bun install
@@ -163,6 +178,12 @@ bun run compile
 Press **F5** for an Extension Development Host. `Cmd+R` reloads it after a
 rebuild.
 
-## Licence
+## 📄 Licence
 
 MIT
+
+<div align="center">
+
+Made for the window with too many agents in it. 🧵
+
+</div>
