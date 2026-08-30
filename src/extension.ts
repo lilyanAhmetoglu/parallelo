@@ -21,23 +21,114 @@ import { StashGuard } from './stashGuard';
 import { ConflictRadar } from './conflictRadar';
 import { log, showLog, disposeLog } from './log';
 
-async function getGitApi(): Promise<GitAPI | undefined> {
+/**
+ * How long git gets to come up before Parallelo says anything about it.
+ *
+ * Long enough that an ordinary slow start stays silent, short enough that
+ * someone whose git really is unavailable is not left guessing.
+ */
+const GIT_GRACE_MS = 20_000;
+
+/** Set once the views and commands are in place, so a retry only runs once. */
+let started = false;
+/** Said at most once per window, however many times the retry re-arms. */
+let warned = false;
+/** The armed retry. One at a time, so a chatty event cannot pile them up. */
+let pending: vscode.Disposable | undefined;
+
+/**
+ * Arms one retry of activation, for either way git can be missing.
+ *
+ * Both ways look identical from here and recover identically: the built-in git
+ * extension may not be registered in this window yet, or it may be registered
+ * and not yet enabled -- `enabled` stays false until it has located git and
+ * built its model. Parallelo read whichever one applied, exactly once, and
+ * returned.
+ *
+ * That return is what made this hard to place, because nothing downstream of
+ * it runs and both halves of the failure are silent. No command is ever
+ * registered, so every one of them answers "command not found" -- and the
+ * startup pass never runs, so no worktree gets its terminal either. Neither
+ * says a word about git.
+ *
+ * So listen for the thing that was missing and start when it arrives. The
+ * listener is disposed before it re-activates, and `started` closes the door
+ * behind a successful run, so this cannot register anything twice.
+ */
+function waitForGit(
+  context: vscode.ExtensionContext,
+  event: vscode.Event<unknown>,
+  waitingFor: string
+): undefined {
+  log(`git: ${waitingFor}; waiting for it`);
+
+  pending?.dispose();
+  const waiting = event(() => {
+    if (started) {
+      waiting.dispose();
+      return;
+    }
+    waiting.dispose();
+    pending = undefined;
+    void activate(context);
+  });
+  pending = waiting;
+  context.subscriptions.push(new vscode.Disposable(() => waiting.dispose()));
+
+  // Only if the wait turns out to be a real one. The old line told people to
+  // enable an extension that was already enabled, which sent them looking in
+  // the wrong place -- so name what is actually being waited on, and say that
+  // it resolves itself.
+  if (!warned) {
+    warned = true;
+    const timer = setTimeout(() => {
+      if (!started) {
+        vscode.window.showWarningMessage(
+          'Parallelo Session is waiting for the built-in Git extension to start. ' +
+            'It picks up on its own as soon as git is available.'
+        );
+      }
+    }, GIT_GRACE_MS);
+    context.subscriptions.push(new vscode.Disposable(() => clearTimeout(timer)));
+  }
+
+  return undefined;
+}
+
+/** The git extension's API, waited for rather than given up on. */
+async function getGitApi(context: vscode.ExtensionContext): Promise<GitAPI | undefined> {
   const extension = vscode.extensions.getExtension<GitExtension>('vscode.git');
   if (!extension) {
-    return undefined;
+    // `onDidChange` is the extension registry changing, which is what happens
+    // when the missing extension turns up.
+    return waitForGit(
+      context,
+      vscode.extensions.onDidChange,
+      'the built-in git extension is not registered in this window'
+    );
   }
+
   const exports = extension.isActive ? extension.exports : await extension.activate();
-  return exports.enabled ? exports.getAPI(1) : undefined;
+  if (exports.enabled) {
+    return exports.getAPI(1);
+  }
+
+  // `onDidChangeEnablement` is the git extension announcing that its model has
+  // arrived. Someone who has genuinely set `git.enabled` to false never fires
+  // it, which is what the grace period above is for.
+  return waitForGit(
+    context,
+    exports.onDidChangeEnablement,
+    'the built-in git extension is registered but not enabled yet'
+  );
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  const git = await getGitApi();
+  const git = await getGitApi(context);
   if (!git) {
-    vscode.window.showWarningMessage(
-      'Parallelo Session needs the built-in Git extension. Enable it and reload the window.'
-    );
     return;
   }
+  started = true;
 
   const tracker = new SessionTracker(git);
   const styles = new SessionStyles(context.globalState);
@@ -590,7 +681,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         )
       ).filter((other): other is Session => other !== undefined);
 
-      if (!(await removeWorktree(root))) {
+      // The count the dialog quotes, and the reason it has a second button.
+      // `doomed` is every session in this directory, the clicked one included,
+      // so its length is what someone looking at the Sessions view can count
+      // for themselves.
+      const outcome = await removeWorktree(root, Math.max(doomed.length, 1));
+
+      // They meant this row, not the directory behind it. Closing the terminal
+      // leaves the worktree, the branch and every uncommitted change exactly
+      // where they were -- and leaves the other sessions in it alone, which is
+      // the whole point of offering this.
+      if (outcome === 'closeSession') {
+        tracker.close(session.terminal);
+        return;
+      }
+      if (outcome !== 'removed') {
         return;
       }
 
