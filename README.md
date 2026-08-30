@@ -52,7 +52,7 @@ terminal is the only contract.**
 | 🎨 **Session appearance** | Name, colour and icon per worktree, remembered across reloads. |
 | 📊 **Status bar** | Active branch and change count. Click to switch session. |
 | ➕ **Start Session** | Creates the branch and worktree, copies your `.env`, runs a setup command, launches the agent. |
-| 🗑️ **Delete Worktree** | Removes the directory, keeps the branch, always asks first. |
+| 🗑️ **Delete Worktree** | Removes the directory, keeps the branch, always asks first. Says how many sessions share that worktree, and offers to close just one. |
 
 ## 📦 Requirements
 

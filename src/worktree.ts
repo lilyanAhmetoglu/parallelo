@@ -491,14 +491,35 @@ function launch(
   }
 }
 
-export async function removeWorktree(worktreeRoot: string): Promise<boolean> {
+/**
+ * What the confirmation came back with.
+ *
+ * `kept` covers cancelling and failing alike: both leave the worktree where it
+ * was, which is the only thing the caller has to know. `closeSession` is the
+ * way out of the dialog for someone who wanted one row gone, not the directory
+ * -- see the note on the shared-worktree copy below.
+ */
+export type RemoveOutcome = 'removed' | 'closeSession' | 'kept';
+
+/**
+ * Removes a linked worktree, after saying what that costs.
+ *
+ * `sessions` is how many terminals are working in this worktree, the clicked
+ * row included. It is not decoration: a worktree is one directory, so two rows
+ * in it are two views of the same files, and removing it takes both. The
+ * dialog has to say so, and has to offer the action the person probably meant.
+ */
+export async function removeWorktree(
+  worktreeRoot: string,
+  sessions = 1
+): Promise<RemoveOutcome> {
   const base = await mainCheckoutOf(worktreeRoot);
   if (!base) {
     vscode.window.showErrorMessage(
       `Could not find the main checkout for ${path.basename(worktreeRoot)}. ` +
         'It may be the main checkout itself rather than a linked worktree.'
     );
-    return false;
+    return 'kept';
   }
 
   // Say what is actually at stake. `git status --porcelain` counts staged,
@@ -522,24 +543,45 @@ export async function removeWorktree(worktreeRoot: string): Promise<boolean> {
     ? 'This worktree is not on a branch, so any commits made here are lost too.'
     : `The branch ${branch} is kept, so anything committed to it is safe.`;
 
+  // What happens to the other rows, said before it happens.
+  //
+  // A row stands for a terminal, so two terminals in one worktree are two
+  // rows -- and a worktree is one directory, so those two rows are two views
+  // of the same files. Removing it therefore takes both, which is exactly the
+  // surprise worth spending a sentence on: someone who deletes one of two rows
+  // means to be rid of that row, not of the work behind both.
+  const shared =
+    sessions > 1
+      ? `${sessions} terminals are working here and they share the same files, ` +
+        `so all ${sessions} sessions go with the worktree.`
+      : 'The terminal working here is closed.';
+
   const detail =
     dirty === undefined
       ? `Could not read the status of this worktree, so there may be uncommitted ` +
-        `changes. Anything not committed will be lost. ${kept} ` +
-        'The terminals working here are closed.'
+        `changes. Anything not committed will be lost. ${kept} ${shared}`
       : dirty
         ? `${dirty} ${dirty === 1 ? 'file has' : 'files have'} uncommitted changes. ` +
-          `They are not on any branch and will be lost. ${kept} ` +
-          'The terminals working here are closed.'
-        : `Nothing is uncommitted here. ${kept} The terminals working here are closed.`;
+          `They are not on any branch and will be lost. ${kept} ${shared}`
+        : `Nothing is uncommitted here. ${kept} ${shared}`;
 
+  const remove = dirty === 0 && !detached ? 'Remove' : 'Remove and discard changes';
+  const closeInstead = 'Close This Session';
+
+  // The safe option comes first, so it is the one the dialog defaults to.
+  // Only when the worktree is shared: with a single session there is nothing
+  // to disentangle, and offering the choice there would put a second button in
+  // front of everyone to solve a problem they do not have.
   const confirm = await vscode.window.showWarningMessage(
     `Remove the worktree at ${path.basename(worktreeRoot)}?`,
     { modal: true, detail },
-    dirty === 0 && !detached ? 'Remove' : 'Remove and discard changes'
+    ...(sessions > 1 ? [closeInstead, remove] : [remove])
   );
-  if (!confirm) {
-    return false;
+  if (confirm === closeInstead) {
+    return 'closeSession';
+  }
+  if (confirm !== remove) {
+    return 'kept';
   }
 
   try {
@@ -554,15 +596,15 @@ export async function removeWorktree(worktreeRoot: string): Promise<boolean> {
       } catch (retry) {
         const failure = retry instanceof Error ? retry.message : String(retry);
         vscode.window.showErrorMessage(`Could not remove the worktree. ${clean(failure)}`);
-        return false;
+        return 'kept';
       }
       vscode.window.showInformationMessage(`Removed worktree ${path.basename(worktreeRoot)}.`);
-      return true;
+      return 'removed';
     }
     vscode.window.showErrorMessage(`Could not remove the worktree. ${clean(message)}`);
-    return false;
+    return 'kept';
   }
 
   vscode.window.showInformationMessage(`Removed worktree ${path.basename(worktreeRoot)}.`);
-  return true;
+  return 'removed';
 }

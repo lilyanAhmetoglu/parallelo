@@ -34,6 +34,31 @@ is what changed since 0.1.5 -- 0.1.6 was built and never published.
   rows in one worktree are two sessions, not a duplicate to tidy up. Deleting a
   worktree still closes every terminal left inside it, because that directory
   is gone.
+- **Parallelo no longer switches itself off when git is a moment late.** It
+  asked the built-in git extension for its API exactly once, at activation, and
+  returned if the answer was no -- for the life of the window. There are two
+  ways to get that answer and both are ordinary: the git extension may not be
+  registered in the window yet, or it may be registered and not yet enabled,
+  which it stays until it has located git and built its model. Activating
+  before either finishes is what happens when the extension host restarts and a
+  view brings Parallelo up first.
+
+  Nothing downstream of that return runs, and both halves of the failure point
+  away from the cause: every command answers `command not found`, and no
+  worktree gets its startup terminal. Neither mentions git. Parallelo now waits
+  for whichever piece was missing and starts when it arrives, says what it is
+  waiting for if the wait is a real one, and logs it either way.
+
+- **Removing a worktree says how many sessions go with it, and offers to close
+  just one instead.** Two terminals in one worktree are two rows, and Delete
+  Worktree took the directory both were standing in -- so removing one session
+  discarded the other's uncommitted work, from a row that gave no sign it spoke
+  for more than itself. The confirmation now counts the terminals working there
+  and, when there is more than one, offers **Close This Session** as the
+  default: that row goes, the worktree and the branch and every change stay
+  where they are. A worktree is one directory, so removing it still takes
+  everything in it -- what changed is that you hear so beforehand, and have the
+  other action to hand.
 - **A symlinked checkout no longer grows a third picker entry.** `git worktree
   list` prints real paths and a terminal keeps the one it was given, so on
   macOS `/tmp/x` and `/private/tmp/x` -- one directory -- never compared equal,
