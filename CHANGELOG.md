@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.0.3] - 2026-08-30
+
+### Added
+- **Stage one file from its row.** Stage All was the only way into the index,
+  so putting a single file there meant leaving the Changes view for the Source
+  Control panel -- the hunt this extension exists to remove. Unstaged,
+  untracked and merge-conflict rows now carry a `+` beside the discard icon,
+  in the order the Source Control view uses, and the same action is in the
+  row's context menu.
+
+  Merge rows had no inline action at all before this. Staging a conflicted file
+  is how it gets marked resolved, and it goes through the same call as any
+  other file.
+
 ## [1.0.2] - 2026-08-30
 
 ### Changed

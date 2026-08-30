@@ -379,6 +379,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       changes.unstageChange(node)
     ),
 
+    vscode.commands.registerCommand('parallelo.stageChange', (node?: ChangeNode) =>
+      changes.stageChange(node)
+    ),
+
     vscode.commands.registerCommand('parallelo.focusTerminal', (session?: Session) => {
       (session ?? tracker.activeSession)?.terminal.show(false);
     }),

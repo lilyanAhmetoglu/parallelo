@@ -2,7 +2,7 @@
   "name": "parallelo-session",
   "displayName": "Parallelo Session",
   "description": "Binds the active terminal to its git worktree. Switch terminals, and the changes and files views follow.",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "publisher": "LilyanALDIMASHKI",
   "license": "MIT",
   "engines": {
@@ -105,6 +105,12 @@
         "title": "Unstage Changes",
         "category": "Parallelo Session",
         "icon": "$(remove)"
+      },
+      {
+        "command": "parallelo.stageChange",
+        "title": "Stage Changes",
+        "category": "Parallelo Session",
+        "icon": "$(add)"
       },
       {
         "command": "parallelo.resetBaseline",
@@ -302,6 +308,26 @@
           "command": "parallelo.resetBaseline",
           "when": "view == worktreeSessions.changes && viewItem == \"commits\"",
           "group": "inline@1"
+        },
+        {
+          "command": "parallelo.stageChange",
+          "when": "view == worktreeSessions.changes && viewItem == change",
+          "group": "inline@2"
+        },
+        {
+          "command": "parallelo.stageChange",
+          "when": "view == worktreeSessions.changes && viewItem == untrackedChange",
+          "group": "inline@2"
+        },
+        {
+          "command": "parallelo.stageChange",
+          "when": "view == worktreeSessions.changes && viewItem == mergeChange",
+          "group": "inline@2"
+        },
+        {
+          "command": "parallelo.stageChange",
+          "when": "view == worktreeSessions.changes && viewItem =~ /^(untracked|merge)?[cC]hange$/",
+          "group": "1_change@2"
         }
       ],
       "commandPalette": [
@@ -319,6 +345,10 @@
         },
         {
           "command": "parallelo.focusTerminal",
+          "when": "false"
+        },
+        {
+          "command": "parallelo.stageChange",
           "when": "false"
         }
       ]
