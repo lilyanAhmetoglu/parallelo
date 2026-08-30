@@ -353,6 +353,30 @@ export class ChangesProvider implements vscode.TreeDataProvider<Node> {
     }
   }
 
+  /**
+   * Stages one file, which is what the row was missing.
+   *
+   * Stage All was the only way in, so staging a single file meant leaving the
+   * view for the Source Control panel -- the hunt this extension exists to
+   * remove. `add` is the git extension's own API and takes the path list, so a
+   * merge-conflicted file resolves through the same call, the same way marking
+   * one resolved works in the SCM view.
+   */
+  async stageChange(node: ChangeNode | undefined): Promise<void> {
+    if (!node) {
+      return;
+    }
+    const { change, repository } = node;
+    try {
+      await repository.add([change.uri.fsPath]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(
+        `Could not stage ${path.basename(change.uri.fsPath)}. ${message}`
+      );
+    }
+  }
+
   private commitsItem(node: CommitsNode): vscode.TreeItem {
     const item = new vscode.TreeItem(
       'Session commits',
