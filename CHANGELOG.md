@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.0.2] - 2026-08-30
 
 ### Changed
 - **Changed files show their file-type icon.** Every row carried the same
