@@ -63,7 +63,7 @@ async function git(cwd: string, args: string[]): Promise<string> {
  * worktree, a terminal in a deleted directory -- which cannot match anything
  * real anyway.
  */
-async function canonical(target: string): Promise<string> {
+export async function canonical(target: string): Promise<string> {
   try {
     return await fs.realpath(target);
   } catch {

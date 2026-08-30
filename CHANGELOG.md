@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.1.6] - 2026-08-30
+## [0.1.7] - 2026-08-30
 
 ### Fixed
 - **A normal session no longer opens inside the worktree you started it from.**
@@ -23,7 +23,41 @@
     resolve and the fallback is the directory you were in. It now names that
     directory rather than calling it something it is not.
 
+- **Close Session closes the session you clicked, and nothing else.** It closed
+  every terminal sharing that directory, so a second shell you had open in the
+  same checkout went with it -- a running agent among them, from a row that
+  gave no hint it spoke for anything but itself. A session is a terminal; two
+  rows in one worktree are two sessions, not a duplicate to tidy up. Deleting a
+  worktree still closes every terminal left inside it, because that directory
+  is gone.
+- **A symlinked checkout no longer grows a third picker entry.** `git worktree
+  list` prints real paths and a terminal keeps the one it was given, so on
+  macOS `/tmp/x` and `/private/tmp/x` -- one directory -- never compared equal,
+  and "This worktree" appeared pointing at the same place as the entry above
+  it. Compared through `realpath` now, the way the rest of the extension
+  already does it.
+- **The offer to show a hidden row is made for every session that would be
+  hidden**, not just one in the main checkout. `showMainCheckout` hides
+  anything that is not a linked worktree, a submodule root included, so a
+  session there went missing with nothing said -- and the message now says the
+  session has no worktree of its own rather than naming a main checkout it may
+  not be in. Accepting it repaints the Sessions view, which nothing was
+  listening to do, so the row no longer stays gone until an unrelated terminal
+  switch. A workspace-level `false` is written back to the workspace instead of
+  to a global the workspace goes on overriding.
+- **Deleting a worktree closes its terminals through their real paths.** The
+  match was a raw string compare, so a second terminal that reached the same
+  worktree by a symlink kept its row and pointed at a deleted directory. It
+  matters more now that Close Session clears one row: this is the only path
+  left that clears a whole worktree. The set is worked out before the removal,
+  because a path that no longer exists cannot be resolved.
+
 ### Changed
+- **Changes is the top view, Sessions the bottom one.** The panel opened on the
+  list of sessions, above the diff it was there to change -- so the thing you
+  read was always the thing you had to scroll to. Files stays collapsed between
+  them. VS Code remembers a view you have dragged yourself, so an existing
+  install keeps whatever order you put it in.
 - Starting a normal session while the Sessions list is set to leave the main
   checkout out now offers to show it. The session lands in the main checkout by
   design, and `parallelo.showMainCheckout: false` left it in neither the

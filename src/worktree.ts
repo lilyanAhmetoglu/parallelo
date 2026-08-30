@@ -3,7 +3,8 @@ import * as path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import type { API as GitAPI } from './git';
-import type { SessionTracker } from './sessionTracker';
+import { isLinkedWorktree, type SessionTracker } from './sessionTracker';
+import { canonical } from './worktreeTerminals';
 
 const run = promisify(execFile);
 
@@ -257,9 +258,17 @@ async function currentBranch(dir: string): Promise<string | undefined> {
  * terminal that appears in neither the Sessions view nor Switch Session.
  *
  * Offered rather than done: the setting was set deliberately, and one session
- * is not a reason to overrule it silently. Written back wherever it was set,
- * or a workspace value would keep winning over the update and the row would
- * still not appear.
+ * is not a reason to overrule it silently. Written back to the workspace when
+ * that is where it was set, or a workspace `false` would keep winning over a
+ * global `true` and the row would still not appear.
+ *
+ * No resource is passed and no folder target is considered. `showMainCheckout`
+ * is window-scoped -- it declares no `scope`, and `window` is the default --
+ * so VS Code neither applies it from folder settings nor reports one from
+ * `inspect`. Scoping the read here would only be safe if `isListed` were
+ * scoped to the same folder, and the two disagreeing is worse than neither
+ * being scoped: the offer would read `true` and stay silent while the row read
+ * `false` and stayed hidden.
  */
 async function offerToShowMainCheckout(): Promise<void> {
   const config = vscode.workspace.getConfiguration('parallelo');
@@ -267,9 +276,13 @@ async function offerToShowMainCheckout(): Promise<void> {
     return;
   }
 
+  // Says what happens rather than where the session is. The trigger is "this
+  // will not be a linked worktree", which covers a submodule root as well as
+  // the main checkout, and naming the wrong one of those is the conflation
+  // this release set out to stop.
   const show = 'Show It';
   const chosen = await vscode.window.showInformationMessage(
-    'This session runs in the main checkout, and the Sessions list is set to leave that row out.',
+    'This session has no worktree of its own, and the Sessions list is set to leave those rows out.',
     show
   );
   if (chosen !== show) {
@@ -278,11 +291,9 @@ async function offerToShowMainCheckout(): Promise<void> {
 
   const set = config.inspect<boolean>('showMainCheckout');
   const target =
-    set?.workspaceFolderValue !== undefined
-      ? vscode.ConfigurationTarget.WorkspaceFolder
-      : set?.workspaceValue !== undefined
-        ? vscode.ConfigurationTarget.Workspace
-        : vscode.ConfigurationTarget.Global;
+    set?.workspaceValue !== undefined
+      ? vscode.ConfigurationTarget.Workspace
+      : vscode.ConfigurationTarget.Global;
   await config.update('showMainCheckout', true, target);
 }
 
@@ -330,9 +341,18 @@ export async function newSession(
   // second terminal in a session an agent is already working in -- a dev
   // server, a test run -- is a real thing to want; it just is not what "no
   // worktree of its own" means.
+  //
+  // Compared canonically. `base` is whatever `git worktree list` printed, which
+  // is the real path, while `here` is the path the terminal was given. On macOS
+  // `/tmp/x` and `/private/tmp/x` are one directory that never compares equal,
+  // and the difference alone would conjure a "This worktree" entry pointing at
+  // the same place as the entry above it.
   const here = tracker.activeSession?.root;
-  const elsewhere =
-    here !== undefined && path.resolve(here) !== path.resolve(base) ? here : undefined;
+  const [canonicalBase, canonicalHere] = await Promise.all([
+    canonical(base),
+    here === undefined ? Promise.resolve(undefined) : canonical(here)
+  ]);
+  const elsewhere = here !== undefined && canonicalHere !== canonicalBase ? here : undefined;
   const [baseBranch, hereBranch] = await Promise.all([
     currentBranch(base),
     elsewhere ? currentBranch(elsewhere) : Promise.resolve(undefined)
@@ -381,9 +401,11 @@ export async function newSession(
   if (scope.cwd) {
     launch(scope.cwd, agent.agent?.label ?? 'Session', command, config, false);
     await tracker.sync();
-    // Only the main checkout's row can be switched off, and only a session
-    // landing there can go missing because of it.
-    if (scope.cwd === base && isMain) {
+    // `isListed` keys on `linked`, not on "is the main checkout", so everything
+    // that is not a linked worktree is hidden by the same setting -- a
+    // submodule root, or any checkout git would not answer for. Ask the
+    // question `isListed` asks rather than a narrower one that misses those.
+    if (!(await isLinkedWorktree(vscode.Uri.file(scope.cwd)))) {
       await offerToShowMainCheckout();
     }
     return;

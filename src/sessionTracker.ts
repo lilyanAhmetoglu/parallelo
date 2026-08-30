@@ -42,6 +42,35 @@ export interface Session {
 }
 
 /**
+ * Whether `root` is a linked worktree.
+ *
+ * A `.git` file alone does not say so: a submodule has one too, and points at
+ * `<super>/.git/modules/<name>` where a linked worktree points at
+ * `<main>/.git/worktrees/<name>`. `git worktree remove` works on the second
+ * and not the first, so read the file rather than just stat it -- and read it
+ * rather than spawning git for every terminal.
+ *
+ * Exported because it is the same question `isListed` turns on, and starting a
+ * session has to ask it about a directory before there is a `Session` to ask
+ * about at all.
+ */
+export async function isLinkedWorktree(root: vscode.Uri): Promise<boolean> {
+  const dotGit = vscode.Uri.joinPath(root, '.git');
+  try {
+    const stat = await vscode.workspace.fs.stat(dotGit);
+    // Bitmask; see the note in `hasUsableGit`. A symlinked `.git` file read
+    // as a directory here loses the row its Delete Worktree action.
+    if ((stat.type & vscode.FileType.File) === 0) {
+      return false;
+    }
+    const pointer = Buffer.from(await vscode.workspace.fs.readFile(dotGit)).toString('utf8');
+    return /^gitdir:\s*.*[\\/]worktrees[\\/]/m.test(pointer);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Whether this session belongs in the Sessions list.
  *
  * A terminal in the main checkout always gets a row and can never be removed
@@ -176,7 +205,7 @@ export class SessionTracker implements vscode.Disposable {
       terminal,
       cwd,
       root: root?.fsPath,
-      linked: root ? await this.isLinkedWorktree(root) : undefined,
+      linked: root ? await isLinkedWorktree(root) : undefined,
       repository,
       label
     };
@@ -382,31 +411,6 @@ export class SessionTracker implements vscode.Disposable {
       }
     }
     return best;
-  }
-
-  /**
-   * Whether `root` is a linked worktree.
-   *
-   * A `.git` file alone does not say so: a submodule has one too, and points at
-   * `<super>/.git/modules/<name>` where a linked worktree points at
-   * `<main>/.git/worktrees/<name>`. `git worktree remove` works on the second
-   * and not the first, so read the file rather than just stat it -- and read it
-   * rather than spawning git for every terminal.
-   */
-  private async isLinkedWorktree(root: vscode.Uri): Promise<boolean> {
-    const dotGit = vscode.Uri.joinPath(root, '.git');
-    try {
-      const stat = await vscode.workspace.fs.stat(dotGit);
-      // Bitmask; see the note in `hasUsableGit`. A symlinked `.git` file read
-      // as a directory here loses the row its Delete Worktree action.
-      if ((stat.type & vscode.FileType.File) === 0) {
-        return false;
-      }
-      const pointer = Buffer.from(await vscode.workspace.fs.readFile(dotGit)).toString('utf8');
-      return /^gitdir:\s*.*[\\/]worktrees[\\/]/m.test(pointer);
-    } catch {
-      return false;
-    }
   }
 
   /**
