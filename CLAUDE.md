@@ -183,6 +183,12 @@ Before first publish: set a real `publisher`, add a 128×128 PNG `icon`, add a L
 
 **Version numbers are permanent and cannot be reused.** Never publish to test.
 
+**Bump the VS Code badge in the README with the version.** shields.io retired
+its Visual Studio Marketplace endpoints, so that badge is a static one reading
+`VS%20Code-v<version>`. It is the one thing in the release that does not follow
+`package.json` on its own, and a stale one says the wrong version on the store
+page. The Open VSX badge is live and needs nothing.
+
 ## Reality check to keep in mind
 
 Microsoft shipped worktree support in 1.103 and their own docs cite parallel agent sessions as a motivating use case. Terminal-to-SCM binding is a plausible next increment for them. This is a personal tool that may be published for free, **not** a product. Do not add monetization, telemetry, or a landing page.
