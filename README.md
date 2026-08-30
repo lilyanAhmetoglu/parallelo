@@ -8,9 +8,9 @@
 
 **One window. Many agents. Each one's changes, exactly when you look at it.**
 
-[![Marketplace](https://img.shields.io/visual-studio-marketplace/v/LilyanALDIMASHKI.parallelo-session?style=for-the-badge&label=VS%20Code&labelColor=1e1e1e&color=7C5CFC)](https://marketplace.visualstudio.com/items?itemName=LilyanALDIMASHKI.parallelo-session)
+[![Marketplace](https://vsmarketplacebadges.dev/version-short/LilyanALDIMASHKI.parallelo-session.svg?style=for-the-badge&label=VS%20Code&labelColor=1e1e1e&color=7C5CFC)](https://marketplace.visualstudio.com/items?itemName=LilyanALDIMASHKI.parallelo-session)
 [![Open VSX](https://img.shields.io/open-vsx/v/LilyanALDIMASHKI/parallelo-session?style=for-the-badge&label=Open%20VSX&labelColor=1e1e1e&color=7C5CFC)](https://open-vsx.org/extension/LilyanALDIMASHKI/parallelo-session)
-[![Installs](https://img.shields.io/visual-studio-marketplace/i/LilyanALDIMASHKI.parallelo-session?style=for-the-badge&labelColor=1e1e1e&color=7A8291)](https://marketplace.visualstudio.com/items?itemName=LilyanALDIMASHKI.parallelo-session)
+[![Installs](https://vsmarketplacebadges.dev/installs-short/LilyanALDIMASHKI.parallelo-session.svg?style=for-the-badge&label=Installs&labelColor=1e1e1e&color=7A8291)](https://marketplace.visualstudio.com/items?itemName=LilyanALDIMASHKI.parallelo-session)
 [![MIT](https://img.shields.io/badge/licence-MIT-7A8291?style=for-the-badge&labelColor=1e1e1e)](LICENSE)
 
 <img src="https://raw.githubusercontent.com/lilyanAhmetoglu/parallelo/main/docs/demo.gif" alt="Switching between three worktree sessions: the Changes panel, the file tree, the terminal and the status bar all follow the session you pick">

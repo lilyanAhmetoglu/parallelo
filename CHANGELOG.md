@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.0.1] - 2026-08-30
+
+### Fixed
+- **The store page's version and install badges.** shields.io retired its
+  Visual Studio Marketplace endpoints, so both rendered as a grey "retired
+  badge" regardless of what was published -- the version badge on the listing
+  never moved off 0.1.5 because it could not report anything at all. They now
+  come from `vsmarketplacebadges.dev`, which answers with the live figures and
+  takes the same label and colour, so the row looks unchanged. The Open VSX
+  badge was always fine and is untouched.
+
+  Nothing about the extension changed in this release. It exists because the
+  Marketplace renders its page from the published package, so a README fix
+  cannot reach the listing any other way.
+
 ## [1.0.0] - 2026-08-30
 
 First stable release. The settings under `parallelo.*` are the interface now:
