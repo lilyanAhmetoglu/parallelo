@@ -1,6 +1,10 @@
 # Changelog
 
-## [0.1.7] - 2026-08-30
+## [1.0.0] - 2026-08-30
+
+First stable release. The settings under `parallelo.*` are the interface now:
+they will not be renamed or removed without a major version. Everything below
+is what changed since 0.1.5 -- 0.1.6 was built and never published.
 
 ### Fixed
 - **A normal session no longer opens inside the worktree you started it from.**
