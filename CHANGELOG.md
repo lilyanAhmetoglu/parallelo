@@ -1,5 +1,22 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- **Changed files show their file-type icon.** Every row carried the same
+  coloured dot, so a list of changes was a column of identical circles and the
+  only way to find the file you wanted was to read the names. The rows already
+  pointed at the real file, which is all VS Code needs to hand them the icon
+  theme's TS, JSON or Markdown icon -- the dot was overriding it. Status is not
+  lost with it: git decorates those same files, so the name keeps its colour
+  and its badge, exactly as the Source Control view shows them.
+
+  **Session-commit rows spell the letter out instead.** Those rows describe
+  what a commit did, and git decorates a file by what the working tree says
+  about it now -- so a file that was committed and then left alone carries no
+  decoration at all, and leaning on decorations there would have removed the
+  only sign of whether it was added or deleted.
+
 ## [1.0.1] - 2026-08-30
 
 ### Fixed
