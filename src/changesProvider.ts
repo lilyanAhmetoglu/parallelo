@@ -96,17 +96,6 @@ function ago(at: number): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-const COLORS: Record<string, string> = {
-  M: 'gitDecoration.modifiedResourceForeground',
-  A: 'gitDecoration.addedResourceForeground',
-  D: 'gitDecoration.deletedResourceForeground',
-  R: 'gitDecoration.renamedResourceForeground',
-  C: 'gitDecoration.addedResourceForeground',
-  U: 'gitDecoration.untrackedResourceForeground',
-  I: 'gitDecoration.ignoredResourceForeground',
-  '!': 'gitDecoration.conflictingResourceForeground'
-};
-
 export class ChangesProvider implements vscode.TreeDataProvider<Node> {
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
@@ -268,10 +257,15 @@ export class ChangesProvider implements vscode.TreeDataProvider<Node> {
           ? 'untrackedChange'
           : 'change';
     item.tooltip = `${path.relative(root, uri.fsPath)} \u2014 ${letter}`;
-    item.iconPath = new vscode.ThemeIcon(
-      'circle-filled',
-      new vscode.ThemeColor(COLORS[letter] ?? 'foreground')
-    );
+    // No `iconPath`. Setting one overrides the icon theme, which is what the
+    // status dot used to do -- so the row showed a coloured circle where every
+    // other file list in the window shows a TS or JSON icon, and you had to
+    // read the name to know what you were looking at.
+    //
+    // `resourceUri` above is what asks for the themed icon. Status is not lost
+    // with the dot: the built-in git extension decorates the same URI, so the
+    // name keeps its colour and picks up git's own badge, which is how the
+    // Source Control view renders these rows.
     item.command = {
       command: 'parallelo.openChange',
       title: 'Open Change',
@@ -416,14 +410,16 @@ export class ChangesProvider implements vscode.TreeDataProvider<Node> {
     const dir = path.dirname(file.path);
     // A rename says where it came from, which is more use in the row than the
     // directory it now sits in.
-    item.description = file.from ? `\u2190 ${file.from}` : dir === '.' ? '' : dir;
+    const where = file.from ? `\u2190 ${file.from}` : dir === '.' ? '' : dir;
+    // The letter is spelled out here rather than left to a decoration. These
+    // rows describe what a *commit* did, and git decorates a file by what the
+    // working tree currently says about it -- so a file committed and left
+    // alone carries no decoration at all, and dropping the dot without this
+    // would take the row's only sign of whether it was added or deleted.
+    item.description = where ? `${file.letter}  ${where}` : file.letter;
     item.resourceUri = file.uri;
     item.contextValue = 'baselineFile';
     item.tooltip = `${file.path} \u2014 ${file.letter}`;
-    item.iconPath = new vscode.ThemeIcon(
-      'circle-filled',
-      new vscode.ThemeColor(COLORS[file.letter] ?? 'foreground')
-    );
     item.command = {
       command: 'parallelo.openChange',
       title: 'Open Change',
