@@ -117,8 +117,12 @@ just the shell, so those sessions bind correctly anyway. Turn it off with
 `parallelo.followProcessCwd`.
 
 Start these as a **normal session**, not a worktree session — the agent makes
-the worktree, so there is no point making one first. To get its own entry in the
-picker:
+the worktree, so there is no point making one first. A normal session opens in
+the **main checkout**, on the base branch, whichever session you started it
+from; it never lands in another session's worktree. When you do want a second
+terminal in the worktree you are already in — a dev server, a test run — the
+picker offers **This worktree** as its own entry. To get the agent its own
+entry in the picker:
 
 ```json
 { "label": "Claude Code (own worktree)", "command": "claude --worktree" }

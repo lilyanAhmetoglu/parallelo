@@ -23,21 +23,26 @@ async function git(cwd: string, args: string[]): Promise<string> {
 }
 
 /**
- * The main checkout a worktree belongs to.
+ * The main working tree of the repository `dir` belongs to, whether or not
+ * `dir` is already that tree.
  *
  * `--git-common-dir` is the `.git` shared by every worktree of the repository,
  * so its parent is the main working tree. Asking git beats guessing from the
  * registered repositories: there may be only one -- the worktree itself -- and
  * picking "some other repository" can land on an unrelated project entirely.
+ *
+ * undefined means the question could not be answered, never "`dir` is the main
+ * checkout". Conflating those is what let a session promise the main checkout
+ * and open in the worktree it was started from instead.
  */
-async function mainCheckoutOf(worktreeRoot: string): Promise<string | undefined> {
+async function resolveMainCheckout(dir: string): Promise<string | undefined> {
   try {
     // The first entry `git worktree list` prints is always the main worktree.
     // Deriving it from --git-common-dir instead only works for a plain or
     // linked checkout: inside a submodule the common dir is
     // `<super>/.git/modules/<name>`, whose parent is not a working tree at all,
     // and creating a worktree there plants a checkout inside `.git`.
-    const listed = await git(worktreeRoot, ['worktree', 'list', '--porcelain']);
+    const listed = await git(dir, ['worktree', 'list', '--porcelain']);
     const first = listed
       .split('\n')
       .find(line => line.startsWith('worktree '))
@@ -52,10 +57,23 @@ async function mainCheckoutOf(worktreeRoot: string): Promise<string | undefined>
     if (path.resolve(first).split(path.sep).includes('.git')) {
       return undefined;
     }
-    return path.resolve(first) === path.resolve(worktreeRoot) ? undefined : first;
+    return first;
   } catch {
     return undefined;
   }
+}
+
+/**
+ * The main checkout a *linked* worktree belongs to, or undefined when this is
+ * not a linked worktree -- which is what `removeWorktree` needs to know, since
+ * git refuses to remove the main working tree.
+ */
+async function mainCheckoutOf(worktreeRoot: string): Promise<string | undefined> {
+  const main = await resolveMainCheckout(worktreeRoot);
+  if (!main) {
+    return undefined;
+  }
+  return path.resolve(main) === path.resolve(worktreeRoot) ? undefined : main;
 }
 
 /**
@@ -69,7 +87,7 @@ async function mainCheckoutOf(worktreeRoot: string): Promise<string | undefined>
 async function baseRepoRoot(
   gitApi: GitAPI,
   tracker: SessionTracker
-): Promise<{ root: string } | { damaged: string } | undefined> {
+): Promise<{ root: string; isMain: boolean } | { damaged: string } | undefined> {
   const candidate =
     tracker.activeSession?.root ??
     tracker.activeSession?.repository?.rootUri.fsPath ??
@@ -86,9 +104,17 @@ async function baseRepoRoot(
     return { damaged: candidate };
   }
 
-  const main = (await mainCheckoutOf(candidate)) ?? candidate;
+  // `isMain` is what the picker is allowed to claim. When git cannot say which
+  // working tree is the main one -- a submodule, a repository it refuses -- the
+  // candidate is all there is, and that candidate may well be the worktree the
+  // session was started from. Falling back is right; calling the fallback the
+  // main checkout is not.
+  const main = await resolveMainCheckout(candidate);
+  const root = main ?? candidate;
   // The main checkout is a different path, so it is worth the same question.
-  return (await isRepository(main)) ? { root: main } : { damaged: main };
+  return (await isRepository(root))
+    ? { root, isMain: main !== undefined }
+    : { damaged: root };
 }
 
 /**
@@ -206,6 +232,60 @@ async function isRepository(dir: string): Promise<boolean> {
   }
 }
 
+/**
+ * The branch a checkout is on, so the picker can name it.
+ *
+ * `--abbrev-ref HEAD` prints the literal string HEAD when detached, and fails
+ * outright in a repository with no commits yet. Neither is a branch worth
+ * showing, so both come back undefined and the copy leaves the branch out.
+ */
+async function currentBranch(dir: string): Promise<string | undefined> {
+  try {
+    const branch = await git(dir, ['rev-parse', '--abbrev-ref', 'HEAD']);
+    return branch && branch !== 'HEAD' ? branch : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * A session with no row is a session you cannot get back to.
+ *
+ * `showMainCheckout` hides the main checkout's row, and someone working
+ * entirely in worktrees is exactly who turns it off. A normal session lands
+ * there on purpose, so leaving it unlisted would answer the request with a
+ * terminal that appears in neither the Sessions view nor Switch Session.
+ *
+ * Offered rather than done: the setting was set deliberately, and one session
+ * is not a reason to overrule it silently. Written back wherever it was set,
+ * or a workspace value would keep winning over the update and the row would
+ * still not appear.
+ */
+async function offerToShowMainCheckout(): Promise<void> {
+  const config = vscode.workspace.getConfiguration('parallelo');
+  if (config.get<boolean>('showMainCheckout', true)) {
+    return;
+  }
+
+  const show = 'Show It';
+  const chosen = await vscode.window.showInformationMessage(
+    'This session runs in the main checkout, and the Sessions list is set to leave that row out.',
+    show
+  );
+  if (chosen !== show) {
+    return;
+  }
+
+  const set = config.inspect<boolean>('showMainCheckout');
+  const target =
+    set?.workspaceFolderValue !== undefined
+      ? vscode.ConfigurationTarget.WorkspaceFolder
+      : set?.workspaceValue !== undefined
+        ? vscode.ConfigurationTarget.Workspace
+        : vscode.ConfigurationTarget.Global;
+  await config.update('showMainCheckout', true, target);
+}
+
 export async function newSession(
   gitApi: GitAPI,
   tracker: SessionTracker
@@ -218,6 +298,8 @@ export async function newSession(
   if (!base) {
     return;
   }
+  // A repository we just initialised is a main checkout by construction.
+  const isMain = located && 'root' in located ? located.isMain : true;
 
   const config = vscode.workspace.getConfiguration('parallelo');
   const agents = config.get<AgentChoice[]>('agents', []);
@@ -234,37 +316,76 @@ export async function newSession(
   const command = agent.agent?.command?.trim();
 
   // Not every session wants a worktree of its own. An agent that makes its own
-  // (`claude --worktree` and the like) needs to be started where you already
-  // are, and Parallelo binds to whatever directory it moves itself into.
-  const here = tracker.activeSession?.root ?? base;
-  const scope = await vscode.window.showQuickPick(
-    [
-      {
-        label: '$(new-folder) Worktree session',
-        description: 'isolated',
-        detail:
-          `New branch and worktree off ${path.basename(base)}, so this agent ` +
-          'cannot touch what the others are editing',
-        fresh: true
-      },
-      {
-        label: '$(folder-active) Normal session',
-        description: 'here',
-        detail:
-          `Run it in ${path.basename(here)} with no worktree. Pick this for an ` +
-          'agent that makes its own, such as claude --worktree',
-        fresh: false
-      }
-    ],
-    { title: 'What kind of session is this?' }
-  );
+  // (`claude --worktree` and the like) needs a checkout to make it from, and
+  // Parallelo binds to whatever directory it moves itself into.
+  //
+  // That checkout is the base one, never whichever worktree the picker happened
+  // to be opened from. Starting there put the agent on another session's
+  // branch, editing its files, and any worktree it then made for itself nested
+  // inside that one -- the same trap `baseRepoRoot` exists to keep the worktree
+  // session out of. A session with no worktree of its own belongs on the base
+  // branch.
+  //
+  // The worktree you are in is still offered, as an entry that says so. A
+  // second terminal in a session an agent is already working in -- a dev
+  // server, a test run -- is a real thing to want; it just is not what "no
+  // worktree of its own" means.
+  const here = tracker.activeSession?.root;
+  const elsewhere =
+    here !== undefined && path.resolve(here) !== path.resolve(base) ? here : undefined;
+  const [baseBranch, hereBranch] = await Promise.all([
+    currentBranch(base),
+    elsewhere ? currentBranch(elsewhere) : Promise.resolve(undefined)
+  ]);
+  const baseName = path.basename(base);
+  const on = (dir: string, branch: string | undefined) =>
+    branch ? `${path.basename(dir)} on ${branch}` : path.basename(dir);
+
+  const choices: { label: string; description: string; detail: string; cwd?: string }[] = [
+    {
+      label: '$(new-folder) Worktree session',
+      description: 'isolated',
+      detail:
+        `New branch and worktree off ${baseName}, so this agent ` +
+        'cannot touch what the others are editing'
+    },
+    {
+      label: '$(folder-active) Normal session',
+      description: on(base, baseBranch),
+      detail:
+        // Only say "the main checkout" when git actually confirmed one.
+        `Run it in ${isMain ? 'the main checkout' : baseName}` +
+        `${baseBranch ? `, on ${baseBranch}` : ''}, with no worktree of its own. ` +
+        'Pick this for an agent that makes one itself, such as claude --worktree',
+      cwd: base
+    }
+  ];
+  if (elsewhere) {
+    choices.push({
+      label: '$(folder) This worktree',
+      description: on(elsewhere, hereBranch),
+      detail:
+        'Another terminal in the session you opened this from. It shares that ' +
+        'branch and its uncommitted changes',
+      cwd: elsewhere
+    });
+  }
+
+  const scope = await vscode.window.showQuickPick(choices, {
+    title: 'What kind of session is this?'
+  });
   if (!scope) {
     return;
   }
 
-  if (!scope.fresh) {
-    launch(here, agent.agent?.label ?? 'Session', command, config, false);
+  if (scope.cwd) {
+    launch(scope.cwd, agent.agent?.label ?? 'Session', command, config, false);
     await tracker.sync();
+    // Only the main checkout's row can be switched off, and only a session
+    // landing there can go missing because of it.
+    if (scope.cwd === base && isMain) {
+      await offerToShowMainCheckout();
+    }
     return;
   }
 

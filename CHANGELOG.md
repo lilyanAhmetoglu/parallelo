@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.1.6] - 2026-08-30
+
+### Fixed
+- **A normal session no longer opens inside the worktree you started it from.**
+  It took the active session's directory, so choosing "Normal session" from a
+  worktree put the new agent in that worktree, on that session's branch,
+  editing its files -- and any worktree the agent then made for itself nested
+  inside it. A session with no worktree of its own belongs on the base branch,
+  so it now opens in the main checkout, whichever session the picker was opened
+  from. Every entry names the folder and branch it will land in, so there is
+  nothing to guess before picking one.
+
+  Two things follow from it:
+
+  - **"This worktree" is its own entry**, shown when you start a session from
+    a worktree. A second terminal where an agent is already working -- a dev
+    server, a test run -- is a real thing to want; it just is not what "no
+    worktree of its own" means, so it says which one it is.
+  - **The entry only claims the main checkout when git confirmed one.** Inside
+    a submodule, or when git will not answer, there is no main working tree to
+    resolve and the fallback is the directory you were in. It now names that
+    directory rather than calling it something it is not.
+
+### Changed
+- Starting a normal session while the Sessions list is set to leave the main
+  checkout out now offers to show it. The session lands in the main checkout by
+  design, and `parallelo.showMainCheckout: false` left it in neither the
+  Sessions view nor Switch Session -- a session you asked for and could not get
+  back to.
+
+
 ## [0.1.5] - 2026-08-29
 
 ### Added
