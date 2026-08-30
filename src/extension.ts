@@ -10,6 +10,7 @@ import { FilesProvider } from './filesProvider';
 import { SessionsProvider } from './sessionsProvider';
 import { newSession, removeWorktree } from './worktree';
 import {
+  canonical,
   openWorktreeTerminals,
   openWorktreeTerminalsOnStartup
 } from './worktreeTerminals';
@@ -191,6 +192,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.workspace.onDidChangeConfiguration(event => {
       if (event.affectsConfiguration('parallelo.autoSessionColors')) {
         void styles.syncAutoColors(tracker.allSessions);
+      }
+      if (event.affectsConfiguration('parallelo.showMainCheckout')) {
+        // Nothing else repaints on this. The Sessions view listens to session
+        // and style events only, so accepting "Show It" after starting a normal
+        // session used to write the setting and leave the row missing until an
+        // unrelated terminal switch happened to refresh it.
+        sessions.refresh();
       }
       if (event.affectsConfiguration('parallelo.sessionBaseline')) {
         baselines.invalidate();
@@ -540,18 +548,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Closing the terminal is the non-destructive way to make a session go
     // away: the worktree, the branch and every uncommitted change stay put.
     // Without this the only action on a row was the one that deletes the lot.
-    vscode.commands.registerCommand('parallelo.closeSession', async (session?: Session) => {
+    vscode.commands.registerCommand('parallelo.closeSession', (session?: Session) => {
       const target = session ?? tracker.activeSession;
       if (!target) {
         vscode.window.showInformationMessage('No session is active.');
         return;
       }
-      // Every terminal in that worktree, so a worktree with two terminals in
-      // it does not leave a second row behind that looks like a duplicate.
-      const doomed = target.root
-        ? tracker.allSessions.filter(other => other.root === target.root)
-        : [target];
-      doomed.forEach(other => tracker.close(other.terminal));
+      // This terminal, and no other. A session *is* a terminal -- that is what
+      // the Map is keyed by, and what each row stands for -- so closing one row
+      // closes one terminal. Closing every terminal that shared the directory
+      // took out a shell somebody was still using, from a row that gave no hint
+      // it spoke for anything but itself. Two rows in one worktree are two
+      // sessions, not a duplicate to tidy up.
+      tracker.close(target.terminal);
     }),
 
     vscode.commands.registerCommand('parallelo.removeWorktree', async (session: Session) => {
@@ -565,6 +574,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
 
+      // Worked out before the removal, not after. `realpath` cannot resolve a
+      // directory that is gone, so once the worktree is removed both sides of
+      // the comparison fall back to `resolve` -- the raw string compare that
+      // misses `/tmp/x` against `/private/tmp/x` and leaves a row alive
+      // pointing at nothing. A session's root is whatever its terminal was
+      // given; git's is the real path.
+      const removed = await canonical(root);
+      const doomed = (
+        await Promise.all(
+          tracker.allSessions.map(async other => {
+            const at = other.root ?? other.repository?.rootUri.fsPath;
+            return at && (await canonical(at)) === removed ? other : undefined;
+          })
+        )
+      ).filter((other): other is Session => other !== undefined);
+
       if (!(await removeWorktree(root))) {
         return;
       }
@@ -572,10 +597,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       // The directory is gone, so every terminal still sitting in it is
       // pointing at nothing. Close them: that is what drops the rows from the
       // Sessions view, which otherwise keeps showing a worktree that no longer
-      // exists.
-      tracker.allSessions
-        .filter(other => other.root === root || other.repository?.rootUri.fsPath === root)
-        .forEach(other => tracker.close(other.terminal));
+      // exists. Close Session no longer does this, so it is the only path that
+      // still clears a whole worktree.
+      doomed.forEach(other => tracker.close(other.terminal));
 
       // Appearance is keyed by worktree path, so a removed worktree would
       // otherwise leave a record behind for good.

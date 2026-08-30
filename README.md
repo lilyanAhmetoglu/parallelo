@@ -143,7 +143,8 @@ deliberately has no stash feature. Off with `parallelo.stashGuard`.
 anything committed is safe. Anything still in the working tree is on no branch
 and goes with the directory — the confirmation tells you how many files that is.
 Nothing is ever moved into your main checkout. Use **Close Session** if you just
-want the row gone.
+want the row gone — it closes that one terminal, and leaves any other session in
+the same checkout running.
 
 🔌 **Worktrees isolate files, nothing else.** Ports, databases, dev servers and
 `.env` state are shared. Two agents running the same dev server will fight over
