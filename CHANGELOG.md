@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.0.5] - 2026-09-04
+
+### Fixed
+- **Session commits lists the branch you are on, not everything the checkout
+  ever did.** 1.0.4 let a normal session report its commits, and in a
+  long-lived checkout that meant dozens of them -- 44 in one repository, 57 in
+  another -- spanning months and every branch that checkout had been on, under
+  a heading that promises the work in front of you.
+
+  The reflog already knows better. Each `checkout: moving from A to B` entry
+  says where HEAD went, so replaying them backwards gives every entry the
+  branch it was written on, and only the ones on the current branch are kept.
+  Leaving a branch and returning keeps both stints, because both are work done
+  on that branch.
+
+  Still read rather than inferred: this is the reflog saying where HEAD went,
+  not a guess from branch shape about where a branch began. A checkout that has
+  never switched branches has no such entry and keeps everything, which is
+  right -- all of it happened on the branch it is still on. A detached HEAD has
+  no branch to belong to and also keeps everything.
+
 ## [1.0.4] - 2026-09-04
 
 ### Fixed
