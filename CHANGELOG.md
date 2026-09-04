@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.0.4] - 2026-09-04
+
+### Fixed
+- **A normal session shows its commits.** Session commits was switched off for
+  anything that was not a linked worktree, so an agent working in the main
+  checkout -- a session like any other -- had that group silently missing. The
+  guard was written for an older implementation that derived a session's
+  commits from branch shape and, in a main checkout, reached back to the
+  repository's first commit and listed work nobody in the window had done. The
+  current one reads the worktree's reflog, which holds what happened in that
+  checkout and nothing else, so the failure it guarded against can no longer
+  occur. A long-lived checkout has a long reflog: the list is capped at 100 and
+  **Reset Session Baseline to Now** trims it.
+
+### Added
+- **Stage, unstage and discard a whole group.** The group rows carry the
+  buttons that fit them -- unstage on Staged, discard and stage on Changes and
+  Untracked, stage on Merge conflicts, which is how a conflict gets marked
+  resolved. They act on that group alone; Stage All in the title bar still
+  takes the session. Discarding untracked files says *delete*, because that is
+  what happens to a file git is not tracking.
+- **A find box on Changes and Files.** VS Code has one for every tree and it
+  filters as you type; the only thing missing was a way to find it. There is
+  now a magnifier in both title bars, and the box opens on its own when a view
+  appears. Opening it also puts the cursor in it, so
+  `parallelo.alwaysShowFind` turns that off and leaves the button.
+
 ## [1.0.3] - 2026-08-30
 
 ### Added

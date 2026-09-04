@@ -2,7 +2,7 @@
   "name": "parallelo-session",
   "displayName": "Parallelo Session",
   "description": "Binds the active terminal to its git worktree. Switch terminals, and the changes and files views follow.",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "publisher": "LilyanALDIMASHKI",
   "license": "MIT",
   "engines": {
@@ -113,6 +113,24 @@
         "icon": "$(add)"
       },
       {
+        "command": "parallelo.stageGroup",
+        "title": "Stage All in Group",
+        "category": "Parallelo Session",
+        "icon": "$(add)"
+      },
+      {
+        "command": "parallelo.unstageGroup",
+        "title": "Unstage All in Group",
+        "category": "Parallelo Session",
+        "icon": "$(remove)"
+      },
+      {
+        "command": "parallelo.discardGroup",
+        "title": "Discard All in Group",
+        "category": "Parallelo Session",
+        "icon": "$(discard)"
+      },
+      {
         "command": "parallelo.resetBaseline",
         "title": "Reset Session Baseline to Now",
         "category": "Parallelo Session",
@@ -193,6 +211,18 @@
         "command": "parallelo.showLog",
         "title": "Show Log",
         "category": "Parallelo Session"
+      },
+      {
+        "command": "parallelo.findInFiles",
+        "title": "Find in Files",
+        "category": "Parallelo Session",
+        "icon": "$(search)"
+      },
+      {
+        "command": "parallelo.findInChanges",
+        "title": "Find in Changes",
+        "category": "Parallelo Session",
+        "icon": "$(search)"
       }
     ],
     "menus": {
@@ -221,6 +251,16 @@
           "command": "parallelo.revealInScm",
           "when": "view == worktreeSessions.changes",
           "group": "navigation@3"
+        },
+        {
+          "command": "parallelo.findInFiles",
+          "when": "view == worktreeSessions.files",
+          "group": "navigation@0"
+        },
+        {
+          "command": "parallelo.findInChanges",
+          "when": "view == worktreeSessions.changes",
+          "group": "navigation@0"
         }
       ],
       "view/item/context": [
@@ -328,6 +368,66 @@
           "command": "parallelo.stageChange",
           "when": "view == worktreeSessions.changes && viewItem =~ /^(untracked|merge)?[cC]hange$/",
           "group": "1_change@2"
+        },
+        {
+          "command": "parallelo.discardGroup",
+          "when": "view == worktreeSessions.changes && viewItem == unstagedGroup",
+          "group": "inline@1"
+        },
+        {
+          "command": "parallelo.discardGroup",
+          "when": "view == worktreeSessions.changes && viewItem == unstagedGroup",
+          "group": "1_group@1"
+        },
+        {
+          "command": "parallelo.stageGroup",
+          "when": "view == worktreeSessions.changes && viewItem == unstagedGroup",
+          "group": "inline@2"
+        },
+        {
+          "command": "parallelo.stageGroup",
+          "when": "view == worktreeSessions.changes && viewItem == unstagedGroup",
+          "group": "1_group@2"
+        },
+        {
+          "command": "parallelo.discardGroup",
+          "when": "view == worktreeSessions.changes && viewItem == untrackedGroup",
+          "group": "inline@1"
+        },
+        {
+          "command": "parallelo.discardGroup",
+          "when": "view == worktreeSessions.changes && viewItem == untrackedGroup",
+          "group": "1_group@1"
+        },
+        {
+          "command": "parallelo.stageGroup",
+          "when": "view == worktreeSessions.changes && viewItem == untrackedGroup",
+          "group": "inline@2"
+        },
+        {
+          "command": "parallelo.stageGroup",
+          "when": "view == worktreeSessions.changes && viewItem == untrackedGroup",
+          "group": "1_group@2"
+        },
+        {
+          "command": "parallelo.stageGroup",
+          "when": "view == worktreeSessions.changes && viewItem == mergeGroup",
+          "group": "inline@2"
+        },
+        {
+          "command": "parallelo.stageGroup",
+          "when": "view == worktreeSessions.changes && viewItem == mergeGroup",
+          "group": "1_group@2"
+        },
+        {
+          "command": "parallelo.unstageGroup",
+          "when": "view == worktreeSessions.changes && viewItem == stagedGroup",
+          "group": "inline@1"
+        },
+        {
+          "command": "parallelo.unstageGroup",
+          "when": "view == worktreeSessions.changes && viewItem == stagedGroup",
+          "group": "1_group@1"
         }
       ],
       "commandPalette": [
@@ -349,6 +449,18 @@
         },
         {
           "command": "parallelo.stageChange",
+          "when": "false"
+        },
+        {
+          "command": "parallelo.stageGroup",
+          "when": "false"
+        },
+        {
+          "command": "parallelo.unstageGroup",
+          "when": "false"
+        },
+        {
+          "command": "parallelo.discardGroup",
           "when": "false"
         }
       ]
@@ -462,6 +574,11 @@
           "type": "boolean",
           "default": true,
           "description": "List the commits each worktree session has made, and count them in the conflict radar."
+        },
+        "parallelo.alwaysShowFind": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open the find box automatically when the Changes or Files view appears, so it is always there. Opening it also puts the cursor in it. Turn this off to open it with the magnifier or Cmd+F instead."
         }
       }
     }

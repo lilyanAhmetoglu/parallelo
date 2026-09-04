@@ -4,6 +4,7 @@ import { SessionTracker, changeCount, isListed } from './sessionTracker';
 import {
   ChangesProvider,
   type ChangeNode,
+  type GroupNode,
   type BaselineFileNode
 } from './changesProvider';
 import { FilesProvider } from './filesProvider';
@@ -216,6 +217,37 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
    * wants a baseline from the moment it was first seen rather than from
    * whenever somebody asks.
    */
+  const findIn = async (view: string): Promise<void> => {
+    await vscode.commands.executeCommand(`${view}.focus`);
+    await vscode.commands.executeCommand('list.find');
+  };
+
+  /**
+   * Opens the find box whenever a list becomes visible, so it is there without
+   * being asked for.
+   *
+   * VS Code will not keep that box open on its own -- there is no option for
+   * it, and it closes on Escape -- so the nearest thing is to reopen it each
+   * time the view appears. Opening it also focuses it, which is the cost, and
+   * why this is a setting rather than simply how the views behave.
+   *
+   * Visibility, not session change: this fires when the view is expanded or
+   * its container shown, not every time you click between terminals, so it
+   * does not take the keyboard away while you are working in one.
+   */
+  const autoFind = (view: vscode.TreeView<unknown>, id: string): vscode.Disposable =>
+    view.onDidChangeVisibility(event => {
+      if (!event.visible) {
+        return;
+      }
+      const on = vscode.workspace
+        .getConfiguration('parallelo')
+        .get<boolean>('alwaysShowFind', true);
+      if (on) {
+        void findIn(id);
+      }
+    });
+
   const stampBaselines = async (): Promise<void> => {
     await Promise.all(
       tracker.allSessions.filter(isListed).map(session => baselines.ensure(session))
@@ -262,6 +294,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     git.onDidOpenRepository(() => void openStartupTerminals()),
+    autoFind(changesView as vscode.TreeView<unknown>, 'worktreeSessions.changes'),
+    autoFind(filesView as vscode.TreeView<unknown>, 'worktreeSessions.files'),
     tracker,
     stashGuard,
     radar,
@@ -381,6 +415,40 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     vscode.commands.registerCommand('parallelo.stageChange', (node?: ChangeNode) =>
       changes.stageChange(node)
+    ),
+
+    /**
+     * Opens VS Code's own find box on one of our views.
+     *
+     * Not a filter of our own. Every tree view already has this -- Cmd+F over a
+     * focused list -- and it filters as you type, inside the panel, with a
+     * highlight/filter toggle, none of which is worth rebuilding. The only
+     * thing missing was a way to discover it, so this is a button that focuses
+     * the view and asks VS Code for the box.
+     *
+     * One command per view, because a `view/title` button cannot pass an
+     * argument saying which view it sits in. `<viewId>.focus` is registered by
+     * VS Code for every contributed view, and `list.find` acts on whatever list
+     * has focus, so the order of the two matters.
+     */
+    vscode.commands.registerCommand('parallelo.findInFiles', () =>
+      findIn('worktreeSessions.files')
+    ),
+
+    vscode.commands.registerCommand('parallelo.findInChanges', () =>
+      findIn('worktreeSessions.changes')
+    ),
+
+    vscode.commands.registerCommand('parallelo.stageGroup', (node?: GroupNode) =>
+      changes.stageGroup(node)
+    ),
+
+    vscode.commands.registerCommand('parallelo.unstageGroup', (node?: GroupNode) =>
+      changes.unstageGroup(node)
+    ),
+
+    vscode.commands.registerCommand('parallelo.discardGroup', (node?: GroupNode) =>
+      changes.discardGroup(node)
     ),
 
     vscode.commands.registerCommand('parallelo.focusTerminal', (session?: Session) => {

@@ -236,6 +236,16 @@ const REACHABLE_DEPTH = 2000;
  * Reflog entries survive their commits: an amend or a reset leaves the old sha
  * behind, so entries are kept only if they are still reachable from HEAD.
  * `since` drops everything committed before an explicit baseline reset.
+ *
+ * This runs for the main checkout too, not only for linked worktrees. It used
+ * not to: an older version derived a session's commits from branch shape,
+ * which in a main checkout reached back to the repository's first commit and
+ * listed work nobody in the window had done. A reflog cannot do that. It holds
+ * what happened in *this* checkout and nothing else, so a normal session --
+ * an agent working on the base branch, which is a session like any other --
+ * gets the same answer by the same rule. A long-lived checkout has a long
+ * reflog, which is what `MAX_COMMITS` and Reset Session Baseline to Now are
+ * for.
  */
 async function commitsMadeHere(
   root: string,
@@ -600,13 +610,6 @@ export class Baselines implements vscode.Disposable {
     const running = this.inFlight.get(key);
     if (running) {
       return running;
-    }
-
-    if (session.linked !== true) {
-      // The main checkout is not a session. Its log reaches back to the
-      // repository's first commit, and every rule that tried to carve a
-      // session out of it produced commits nobody in the window wrote.
-      return undefined;
     }
 
     const generation = this.generation;
