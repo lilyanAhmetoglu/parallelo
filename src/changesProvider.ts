@@ -8,7 +8,7 @@ import type { BaselineCommit, BaselineFile, Baselines } from './baselines';
 
 type Node = GroupNode | ChangeNode | CommitsNode | CommitNode | BaselineFileNode;
 
-interface GroupNode {
+export interface GroupNode {
   kind: 'group';
   label: string;
   staged: boolean;
@@ -21,6 +21,14 @@ interface GroupNode {
    */
   merge?: boolean;
   changes: Change[];
+  /**
+   * What the row's buttons act on, and what the menus match against.
+   *
+   * The label alone will not do: it is display copy, and the `when` clauses
+   * would then be matching English rather than a group's kind.
+   */
+  id: 'merge' | 'staged' | 'unstaged' | 'untracked';
+  repository: Repository;
 }
 
 interface ChangeNode {
@@ -148,17 +156,40 @@ export class ChangesProvider implements vscode.TreeDataProvider<Node> {
           label: 'Merge conflicts',
           staged: false,
           merge: true,
-          changes: merge
+          changes: merge,
+          id: 'merge',
+          repository
         });
       }
       if (staged.length) {
-        groups.push({ kind: 'group', label: 'Staged', staged: true, changes: staged });
+        groups.push({
+          kind: 'group',
+          label: 'Staged',
+          staged: true,
+          changes: staged,
+          id: 'staged',
+          repository
+        });
       }
       if (unstaged.length) {
-        groups.push({ kind: 'group', label: 'Changes', staged: false, changes: unstaged });
+        groups.push({
+          kind: 'group',
+          label: 'Changes',
+          staged: false,
+          changes: unstaged,
+          id: 'unstaged',
+          repository
+        });
       }
       if (untracked.length) {
-        groups.push({ kind: 'group', label: 'Untracked', staged: false, changes: untracked });
+        groups.push({
+          kind: 'group',
+          label: 'Untracked',
+          staged: false,
+          changes: untracked,
+          id: 'untracked',
+          repository
+        });
       }
 
       // Last, and collapsed. The groups above are this session's uncommitted
@@ -218,7 +249,7 @@ export class ChangesProvider implements vscode.TreeDataProvider<Node> {
         vscode.TreeItemCollapsibleState.Expanded
       );
       item.description = String(node.changes.length);
-      item.contextValue = 'group';
+      item.contextValue = `${node.id}Group`;
       return item;
     }
 
@@ -374,6 +405,79 @@ export class ChangesProvider implements vscode.TreeDataProvider<Node> {
       vscode.window.showErrorMessage(
         `Could not stage ${path.basename(change.uri.fsPath)}. ${message}`
       );
+    }
+  }
+
+  /**
+   * Stages every file in one group.
+   *
+   * Deliberately not Stage All. That button takes the whole session, which is
+   * the wrong instrument when the point of the split is that these three sets
+   * are different kinds of thing -- untracked files you may not want in the
+   * commit at all, conflicts you are still working through.
+   */
+  async stageGroup(node: GroupNode | undefined): Promise<void> {
+    if (!node?.changes.length) {
+      return;
+    }
+    try {
+      await node.repository.add(node.changes.map(change => change.uri.fsPath));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`Could not stage ${node.label}. ${message}`);
+    }
+  }
+
+  /** Empties the index, or as much of it as this group holds. */
+  async unstageGroup(node: GroupNode | undefined): Promise<void> {
+    if (!node?.changes.length) {
+      return;
+    }
+    try {
+      await node.repository.revert(node.changes.map(change => change.uri.fsPath));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`Could not unstage ${node.label}. ${message}`);
+    }
+  }
+
+  /**
+   * Throws away every change in one group, after saying what that costs.
+   *
+   * The count and the wording both come from what the group actually holds.
+   * Untracked files are deleted rather than restored -- that is what the git
+   * extension's `clean` does with them -- and a modal that says "discard" over
+   * files that are about to be removed from disk is the wrong promise.
+   */
+  async discardGroup(node: GroupNode | undefined): Promise<void> {
+    if (!node?.changes.length) {
+      return;
+    }
+    const count = node.changes.length;
+    const files = `${count} ${count === 1 ? 'file' : 'files'}`;
+    const deletes = node.id === 'untracked';
+
+    const confirm = await vscode.window.showWarningMessage(
+      deletes ? `Delete ${files}?` : `Discard changes to ${files}?`,
+      {
+        modal: true,
+        detail: deletes
+          ? `These ${count === 1 ? 'file is' : 'files are'} not tracked by git, ` +
+            'so this deletes them from disk. There is nothing to restore them from.'
+          : `These changes are not committed and not on any branch. ` +
+            'They cannot be recovered.'
+      },
+      deletes ? 'Delete Files' : 'Discard Changes'
+    );
+    if (!confirm) {
+      return;
+    }
+
+    try {
+      await node.repository.clean(node.changes.map(change => change.uri.fsPath));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`Could not discard ${node.label}. ${message}`);
     }
   }
 

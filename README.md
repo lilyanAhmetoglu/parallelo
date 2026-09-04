@@ -8,7 +8,7 @@
 
 **One window. Many agents. Each one's changes, exactly when you look at it.**
 
-[![Marketplace](https://img.shields.io/badge/VS%20Code-v1.0.3-7C5CFC?style=for-the-badge&labelColor=1e1e1e)](https://marketplace.visualstudio.com/items?itemName=LilyanALDIMASHKI.parallelo-session)
+[![Marketplace](https://img.shields.io/badge/VS%20Code-v1.0.4-7C5CFC?style=for-the-badge&labelColor=1e1e1e)](https://marketplace.visualstudio.com/items?itemName=LilyanALDIMASHKI.parallelo-session)
 [![Open VSX](https://img.shields.io/open-vsx/v/LilyanALDIMASHKI/parallelo-session?style=for-the-badge&label=Open%20VSX&labelColor=1e1e1e&color=7C5CFC)](https://open-vsx.org/extension/LilyanALDIMASHKI/parallelo-session)
 [![MIT](https://img.shields.io/badge/licence-MIT-7A8291?style=for-the-badge&labelColor=1e1e1e)](LICENSE)
 
