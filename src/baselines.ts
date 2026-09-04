@@ -251,6 +251,14 @@ async function commitsMadeHere(
   root: string,
   since: number | undefined
 ): Promise<{ commits: BaselineCommit[]; more: boolean }> {
+  // The branch to keep commits for. Detached HEAD has no name to compare
+  // against, so the replay below is skipped and everything is kept -- there is
+  // no branch for it to belong to.
+  const branch = await git(root, ['rev-parse', '--abbrev-ref', 'HEAD'])
+    .then(name => (name && name !== 'HEAD' ? name : undefined))
+    .catch(() => undefined);
+  let on = branch;
+
   const format = ['%H', '%gs', '%gd', '%s', '%an', '%at', '%P'].join(FIELD);
   // `--date=unix` turns `%gd` into `HEAD@{1788026990}` -- when the entry was
   // written, which is when the commit happened *here*. That is the clock a
@@ -265,6 +273,35 @@ async function commitsMadeHere(
       continue;
     }
     const [sha, action, entry, subject, author, at, parents] = line.split(FIELD);
+
+    // Track which branch HEAD was on when each entry was written.
+    //
+    // Entries are newest first and HEAD is on `branch` now, so everything
+    // above a `checkout: moving from A to B` happened on B and everything
+    // below it happened on A. Replaying that backwards gives each entry the
+    // branch it belongs to, and only the ones on the current branch are kept.
+    //
+    // Without it a long-lived checkout listed every commit ever made in it --
+    // dozens, across months and half a dozen branches -- under a heading that
+    // promises the work of the session you are looking at.
+    //
+    // Replayed rather than cut at the first switch: leaving a branch and
+    // coming back is ordinary, and both stints are work done on that branch.
+    //
+    // Still read, not inferred. This is the reflog saying where HEAD went, not
+    // a guess from branch shape about where a branch began -- the reasoning
+    // that failed three times. A checkout that never switched branches has no
+    // such entry and keeps everything, which is right: all of it happened on
+    // the branch it is still on.
+    const moved = action?.match(/^checkout: moving from (.+) to (.+)$/);
+    if (moved) {
+      on = moved[1];
+      continue;
+    }
+    if (branch !== undefined && on !== branch) {
+      continue;
+    }
+
     // `commit:` and `commit (initial):`, but never `commit (merge):`.
     if (!action?.startsWith('commit') || action.startsWith('commit (merge)')) {
       continue;
