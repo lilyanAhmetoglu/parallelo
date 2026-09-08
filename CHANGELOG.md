@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.1.0] - 2026-09-08
+
+### Added
+- **Brainstorming rooms.** `+` -> Brainstorming room puts two agents in one
+  worktree and makes them argue a plan before anyone writes code. You give the
+  topic and pick the two seats -- agent and model each, so a room can be two
+  instances of the same CLI on different models. They take turns until they
+  agree or run out of rounds, and the lead writes one spec file.
+
+  The protocol is not in this extension. It lives in `roundtable-mcp`, invoked
+  as an external binary; Parallelo makes the worktree, opens the terminals,
+  binds them to the diff, and puts a different seat in each terminal's
+  environment -- which is the one thing the server cannot do for itself, and
+  what lets two identical agents tell each other apart.
+
+  Rooms plan, they do not implement. The seats hold no file tools and no shell:
+  the spec is produced through the server's `write_spec`, and closing the room
+  is refused until it has been. A room writes nothing at the worktree root but
+  `SPEC-<room>.md`; prompts, config and transcript live under `.roundtable/`,
+  which ignores itself.
+
+- **Show Brainstorming Room Transcript.** Opens the whole discussion -- what the
+  peer objected to, what the lead conceded -- rendered outside the worktree. The
+  spec is the decision; this is how they got there. Two documents on purpose:
+  putting the argument inside the spec makes the decision harder to find, and
+  the spec is the file you push.
+
 ## [1.0.5] - 2026-09-04
 
 ### Fixed
