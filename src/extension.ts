@@ -10,6 +10,7 @@ import {
 import { FilesProvider } from './filesProvider';
 import { SessionsProvider } from './sessionsProvider';
 import { newSession, removeWorktree } from './worktree';
+import { newRoom, sendKickoff, showTranscript } from './room';
 import {
   canonical,
   openWorktreeTerminals,
@@ -350,6 +351,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       sessions.refresh();
     }),
 
+    vscode.commands.registerCommand('parallelo.newRoom', () => newRoom(git, tracker)),
+    vscode.commands.registerCommand('parallelo.sendRoomBrief', () => sendKickoff()),
+    vscode.commands.registerCommand('parallelo.showRoomTranscript', () => showTranscript(tracker)),
     vscode.commands.registerCommand('parallelo.newSession', () =>
       newSession(git, tracker)
     ),

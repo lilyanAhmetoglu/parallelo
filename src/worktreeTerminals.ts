@@ -192,11 +192,31 @@ function terminalCwd(terminal: vscode.Terminal): string | undefined {
  * as occupying its parent. That is the same rule `SessionTracker` uses to pick
  * a repository, for the same reason.
  */
+/**
+ * Worktrees whose terminals a caller is about to open itself.
+ *
+ * `openRepository` fires `onDidOpenRepository`, which runs the startup pass,
+ * which sees a brand new worktree with nothing in it and helpfully opens a
+ * shell. Whoever made that worktree in order to put its own terminals in it
+ * then gets a stray one alongside them. A caller that is going to fill a
+ * worktree reserves it first and releases it once its terminals exist.
+ */
+const reserved = new Set<string>();
+
+export async function reserve(root: string): Promise<void> {
+  reserved.add(await canonical(root));
+}
+
+export async function release(root: string): Promise<void> {
+  reserved.delete(await canonical(root));
+}
+
 async function occupied(
   tracker: SessionTracker,
   worktrees: WorktreeInfo[]
 ): Promise<Set<string>> {
   const paths = [
+    ...reserved,
     ...tracker.allSessions.map(session => session.root).filter((root): root is string => !!root),
     ...vscode.window.terminals.map(terminalCwd).filter((cwd): cwd is string => !!cwd)
   ];

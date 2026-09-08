@@ -127,6 +127,122 @@ entry in the picker:
 { "label": "Claude Code (own worktree)", "command": "claude --worktree" }
 ```
 
+## 🧠 Brainstorming rooms
+
+Sometimes the expensive mistake is in the plan, not the code. A **room** puts two
+agents in one worktree and makes them argue about it before anyone writes
+anything.
+
+Click `+`, choose **Brainstorming room**, give it a topic, and pick the two
+agents. Parallelo makes a worktree, opens two terminals in it, and seats one
+agent as the **lead** and the other as the **peer**. They take turns through a
+transcript on disk until they agree or run out of rounds, and the lead writes a
+spec file at the end.
+
+Rooms need the server that carries the conversation:
+
+```bash
+bun add -g roundtable-mcp
+```
+
+**The brief travels in the system prompt, not as typed input.**
+`--append-system-prompt-file` puts each seat's instructions in place before the
+agent accepts anything, so a startup dialog cannot swallow them. Typed input
+can be lost; a system prompt cannot. If the opening line is eaten, type anything
+at all — the agent already knows which seat it is and what the room is for.
+
+**The seats are read-only, and that is enforced rather than asked for.** An agent
+holding a file-writing tool will eventually use it: give a lead `Write` and
+`Bash` and it will start implementing the thing it was asked to plan. So the
+seats get reading and the room's own tools, and nothing else — the spec is
+produced through the server's `write_spec` tool, so no seat needs write access
+to produce output. Their permissions are settled up front too, because the peer
+spends most of a room parked inside one tool call, and an agent stopped at a
+prompt is a conversation that never starts.
+
+**None of that is yours to configure.** The flags live on the agent entry in
+`parallelo.agents` as `roomArgs`, and Claude Code ships with a working one. An
+agent with no `roomArgs` is refused a seat rather than opened, because a seat
+that cannot reach the server produces a terminal that sits there doing nothing
+and looks exactly like one that is thinking. To seat an agent Parallelo does not
+know, give it a `roomArgs`; to force one command line on both seats, set
+`parallelo.roundtable.agentArgs`. `${roomDir}`, `${room}` and `${seat}` are
+substituted per room, and both are used in rooms only, never in a normal
+session.
+
+**Keep worktrees inside the repo.** With the default `worktreePath` of
+`.worktrees`, a room's worktree sits under a directory your agent already
+trusts, and it starts straight into the conversation. Point `worktreePath`
+somewhere outside the repo and every seat opens in unfamiliar territory and
+stops to ask whether you trust it — in both terminals, every room.
+
+**You do not type anything into either terminal.** The topic you gave the
+dialog is the whole brief, and it reaches both seats in their system prompts.
+Parallelo then waits for each seat to appear in the room — an agent registers
+with the server the moment it has finished starting, which is the only reliable
+signal that it is ready to be told anything — and sends that seat its opening
+line. The lead posts first; the peer is already parked inside
+`wait_for_message`, so the lead's post wakes it. Nothing needs a person.
+
+If a seat never reaches the room within two minutes, Parallelo says which one
+and offers its terminal, where the error will be. **Parallelo: Send
+Brainstorming Room Brief** re-sends by hand if you restart a seat yourself.
+
+**To read the discussion afterwards**, not just the conclusion: focus a terminal
+in the room's worktree and run **Parallelo: Show Brainstorming Room Transcript**.
+It opens the whole argument in a preview, rendered outside the worktree.
+
+The spec is the decision, written for someone who was not in the room. The
+transcript is how they got there — what the peer objected to and what the lead
+conceded. Deliberately two documents: putting the argument inside the spec makes
+the decision harder to find, and the spec is the file you push. From a shell:
+
+```bash
+roundtable transcript --room <name> --cwd <worktree>              # Markdown
+roundtable transcript --room <name> --cwd <worktree> --out r.html # a page
+```
+
+You are asked which **model** each seat runs, so a room can be two of the same
+agent on different models — Opus 5 leading, Sonnet 5 pushing back. The choice is
+recorded against every message in the transcript. Add models to any agent in
+`parallelo.agents`.
+
+Parallelo does not implement any of the protocol. It starts the worktree and the
+terminals, and puts a different seat in each terminal's environment — that last
+part is what lets **two instances of the same agent** hold a conversation, since
+neither the extension nor the server can otherwise tell them apart. Claude and
+Codex, Claude and Claude, Copilot and anything: the room never learns what is
+sitting in a seat.
+
+Worth knowing before you run one:
+
+- **Both agents share one checkout**, because they are arguing about the same
+  code. Rooms are for planning. Give the implementation to one agent afterwards,
+  in a session of its own.
+- **The round budget is the termination condition**, not a safety rail. Two
+  agents do not get bored and never run out of refinements. The default is 8.
+- **It costs double.** Two agents reasoning over the same repository. Worth it
+  for a decision you would otherwise get wrong, not for naming a variable.
+- **The spec ends with a Dissent section** holding whatever the peer still
+  disagrees with, in its own words. Two agents left alone converge into
+  agreement, and what they flattened on the way there is usually the part worth
+  your attention.
+
+## What a room leaves behind
+
+One file: **`SPEC-<room>.md`** at the root of the worktree. That is the room's
+output and the only thing you need to read — the decision in the first
+paragraph, then the reasoning, the work broken into steps, and a **Dissent**
+section holding whatever the peer still disagrees with, in its own words.
+
+Everything else is working material and **is not committed**. The prompts, the
+server config, and the transcript live under `.roundtable/`, which ignores
+itself — your repository's own `.gitignore` is never touched, and `git status`
+in a room worktree shows the spec and nothing else.
+
+So the answer to "which file is the final one" is always the same: the one git
+is showing you.
+
 ## 💡 Things worth knowing
 
 > ⚠️ **`git stash` is shared across all worktrees.** `refs/stash` lives in the
@@ -167,6 +283,8 @@ moment.
 | `parallelo.conflictRadar` | `true` | Mark sessions editing the same file as another session |
 | `parallelo.sessionBaseline` | `true` | List the commits each worktree session has made, and count them in the conflict radar |
 | `parallelo.setupCommand` | — | Command run once in a new worktree before the agent starts |
+| `parallelo.roundtable.command` | `roundtable` | The MCP server executable that brainstorming rooms run |
+| `parallelo.roundtable.budget` | `8` | Turns the lead agent gets in a room before it must write the spec |
 | `parallelo.copyFiles` | `.env`, `.env.local` | Untracked files copied into each new worktree |
 | `parallelo.showStatusBar` | `true` | Show the active session's branch in the status bar |
 | `parallelo.showMainCheckout` | `true` | List a terminal in the main checkout, not only worktree sessions |

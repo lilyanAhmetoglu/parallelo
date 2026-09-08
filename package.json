@@ -73,6 +73,22 @@
         "icon": "$(add)"
       },
       {
+        "command": "parallelo.newRoom",
+        "title": "Start Brainstorming Room",
+        "icon": "$(comment-discussion)",
+        "category": "Parallelo"
+      },
+      {
+        "command": "parallelo.sendRoomBrief",
+        "title": "Send Brainstorming Room Brief",
+        "category": "Parallelo"
+      },
+      {
+        "command": "parallelo.showRoomTranscript",
+        "title": "Show Brainstorming Room Transcript",
+        "category": "Parallelo"
+      },
+      {
         "command": "parallelo.openAllWorktrees",
         "title": "Open a Terminal in Every Worktree",
         "category": "Parallelo Session",
@@ -473,22 +489,46 @@
           "default": [
             {
               "label": "Claude Code",
-              "command": "claude"
+              "command": "claude",
+              "modelFlag": "--model",
+              "models": [
+                {
+                  "label": "Opus 5",
+                  "value": "claude-opus-5"
+                },
+                {
+                  "label": "Sonnet 5",
+                  "value": "claude-sonnet-5"
+                },
+                {
+                  "label": "Haiku 4.5",
+                  "value": "claude-haiku-4-5"
+                },
+                {
+                  "label": "Default",
+                  "value": ""
+                }
+              ],
+              "roomArgs": "--append-system-prompt-file ${roomDir}/${seat}.md --strict-mcp-config --mcp-config ${roomDir}/mcp.json --allowedTools \"Read,Glob,Grep,mcp__roundtable__post,mcp__roundtable__wait_for_message,mcp__roundtable__read_room,mcp__roundtable__room_status,mcp__roundtable__write_spec,mcp__roundtable__close_room\" --disallowedTools \"Write,Edit,MultiEdit,NotebookEdit,Bash,BashOutput,KillShell,Task,SlashCommand,WebFetch,WebSearch\""
             },
             {
               "label": "Codex",
-              "command": "codex"
+              "command": "codex",
+              "modelFlag": "--model",
+              "models": []
             },
             {
               "label": "GitHub Copilot",
-              "command": "copilot"
+              "command": "copilot",
+              "modelFlag": "--model",
+              "models": []
             },
             {
               "label": "Shell only",
               "command": ""
             }
           ],
-          "description": "Agents offered when starting a worktree session. An empty command opens the terminal without launching anything.",
+          "description": "Agents offered when starting a session or a brainstorming room. An empty command opens the terminal without launching anything. Give an agent two or more models and you are asked which one to run; the choice is passed with modelFlag (default --model) and recorded in the room transcript.",
           "items": {
             "type": "object",
             "required": [
@@ -500,6 +540,33 @@
               },
               "command": {
                 "type": "string"
+              },
+              "modelFlag": {
+                "type": "string",
+                "default": "--model",
+                "description": "How this agent takes a model on its command line."
+              },
+              "models": {
+                "type": "array",
+                "description": "Models to offer for this agent. Fewer than two and nothing is asked. An empty value means the agent's own default.",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "label"
+                  ],
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "roomArgs": {
+                "type": "string",
+                "markdownDescription": "Flags this agent needs in a brainstorming room, and nowhere else. `${roomDir}`, `${room}` and `${seat}` are substituted.\n\nTwo jobs. **Point the agent at the room** — its MCP config, so it can reach the other seat, and its brief through the system prompt, because typed input is eaten by an agent’s startup dialog and a seat that never read its brief looks exactly like one waiting properly. **Keep the room a planning room** — an agent holding a file tool will implement rather than plan, so allow reading and the room’s own tools and deny writing and the shell; the spec is produced through the server’s `write_spec` tool.\n\nClaude Code ships with a working value. An agent with no roomArgs cannot be seated, because a seat that cannot reach the server is a room that silently does nothing."
               }
             }
           }
@@ -579,6 +646,22 @@
           "type": "boolean",
           "default": true,
           "description": "Open the find box automatically when the Changes or Files view appears, so it is always there. Opening it also puts the cursor in it. Turn this off to open it with the magnifier or Cmd+F instead."
+        },
+        "parallelo.roundtable.command": {
+          "type": "string",
+          "default": "roundtable",
+          "description": "The roundtable MCP server executable that brainstorming rooms run. Install it with: bun add -g roundtable-mcp"
+        },
+        "parallelo.roundtable.budget": {
+          "type": "number",
+          "default": 8,
+          "minimum": 1,
+          "description": "How many turns the lead agent gets in a brainstorming room. This is what ends the discussion: two agents left alone keep refining a plan indefinitely."
+        },
+        "parallelo.roundtable.agentArgs": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Overrides every agent’s `roomArgs` in a brainstorming room. Leave empty — the default — and each agent uses its own, which is where these flags belong, since they are that agent’s syntax. Set this only to force one command line on both seats. `${roomDir}`, `${room}` and `${seat}` are substituted."
         }
       }
     }

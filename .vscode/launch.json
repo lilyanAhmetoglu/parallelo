@@ -7,7 +7,7 @@
       "request": "launch",
       "args": [
         "--extensionDevelopmentPath=${workspaceFolder}",
-        "${env:HOME}/Desktop/parallelo-lab"
+        "${env:HOME}/Desktop/parallelo-lab/repo"
       ],
       "outFiles": ["${workspaceFolder}/out/**/*.js"]
     }

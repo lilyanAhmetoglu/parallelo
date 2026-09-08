@@ -29,11 +29,102 @@ Verify assumptions against these before adding anything:
 Do not build these. They are either solved elsewhere or belong in a separate project:
 
 - Worktree management as a feature surface (creation, listing, pruning UI) beyond the one convenience command below
-- Any cross-agent memory, message bus, or MCP server
-- Agent orchestration, dispatching prompts, or headless agent runs
+- Any cross-agent memory, or an MCP server *implemented in this extension* --
+  see the amendment below
+- Agent orchestration beyond starting terminals, or headless agent runs
 - Reimplementing the diff editor — always delegate to `vscode.diff`
 - Replacing the built-in Source Control panel — this lives beside it, not instead of it
 - Telemetry, license gating, or paid tiers
+
+### Amendment: brainstorming rooms (2026-09-06)
+
+Rooms cross the old "no MCP server, no dispatching prompts" line, deliberately
+and with a boundary drawn:
+
+- **The protocol is not in this extension.** It lives in `roundtable-mcp`, a
+  separate package with its own repo, invoked as an external binary. Parallelo
+  never implements a message bus and never speaks MCP itself. If that stops
+  being true, the feature has gone wrong.
+- **What Parallelo contributes is what it already did**: make a worktree, open
+  terminals in it, bind them to the diff. Plus one thing the server cannot do
+  for itself -- put a different `ROUNDTABLE_SEAT` in each terminal's
+  environment, which is what lets two identical agents know which is which.
+- **Both seats share one checkout.** They are arguing about the same code. Two
+  worktrees would give them two repositories and two transcripts that never
+  meet.
+- The kickoff is one line pointing at a prompt file the server wrote. The
+  extension keeps no copy of the prompts; they belong to the protocol.
+
+- **A seat's brief goes in its system prompt, never as typed input.** Terminal
+  text is eaten by whatever dialog the agent shows at startup, and a seat that
+  never read its brief is indistinguishable from one waiting properly -- three
+  rooms died this way before the cause was found. `--append-system-prompt-file`
+  with a `${seat}` placeholder is the delivery mechanism; the typed line only
+  starts the turn.
+- **The seats are read-only, and that is enforced, not requested.** An agent
+  holding a file tool will implement rather than plan -- a Haiku lead given
+  `Write` and `Bash` wrote the whole feature and never opened the room. So the
+  room's tools are the only way to produce anything: `write_spec` lives on the
+  server and `close_room` refuses until it has been called. Never solve this
+  with prompt wording alone; wording is what failed.
+- **Scrub the parent agent's session markers from a seat's environment.** A
+  terminal inherits the editor's environment and the editor inherits whatever
+  launched it, so opening VS Code from a shell inside an agent makes every seat
+  a *child of that session* -- one session id shared by both seats and the
+  parent, transcripts off, permissions answered out of sight. Two seats that are
+  the same session cannot argue with each other. Clear the per-session markers
+  only; leave real configuration alone.
+- **Never put a seat in plan mode.** It sounds right and it is measured wrong:
+  `--permission-mode plan` overrides `--allowedTools` and puts an approval
+  prompt in front of every action-shaped tool, `post` included, so the lead
+  cannot speak and the peer waits forever. Same room, same flags, budget 1:
+  plan mode reached 0 tool calls in ten minutes; without it, 9 calls, both
+  seats, spec written, room closed. What plan mode is wanted for is already
+  guaranteed more strictly -- the seats hold no `Write`, `Edit`, `NotebookEdit`
+  or `Bash` at all, so implementing is impossible rather than merely gated.
+- **Brief a seat when the server says it connected, never on a timer or a
+  button.** An agent registers with the room as soon as it has finished
+  starting, and that is the only honest readiness signal available. It was a
+  button on a notification once; notifications scroll away, and a room that was
+  never briefed looks exactly like a room that is thinking.
+- **Type the brief and press Enter as two separate writes.** `sendText(text)`
+  emits the text and its newline in one burst, and an agent TUI reading that
+  fast treats it as a paste: the brief lands in the input box and sits there
+  unsent. That is indistinguishable from never having sent it, and it is what
+  "the peer is idle at the input box" actually was. `sendText(text, false)`,
+  a short pause, then `sendText('', true)`. Shells do not care; TUIs do.
+- **The room's wiring ships with the agent, not with the user.** The flags that
+  point a seat at the MCP server and at its brief live in `roomArgs` on the
+  agent entry, with a working default for Claude Code, and a seat with no flags
+  is refused rather than opened. They were a settings-only value defaulting to
+  empty, which meant the whole feature did nothing at all unless a 400-character
+  string had been copied in by hand -- and two plain agents with no server look
+  exactly like two agents thinking. Never let a room open in a state where it
+  cannot possibly work.
+- **Claude Code's trust is inherited from a parent directory.** A worktree under
+  an already-trusted repo shows no startup dialog; one outside it shows a dialog
+  in every seat. This is the reason `worktreePath` must stay inside the repo for
+  rooms, and it was measured, not assumed.
+
+- **A room writes nothing at the worktree root but the spec.** No `.mcp.json`:
+  the seats are launched with `--strict-mcp-config` pointed at the room's own
+  config, so a copy beside it is never read, shows up in `git status`, and in a
+  repo that already tracks one would edit a tracked file. Deny the indirect
+  write paths too, not just `Write` and `Edit` -- a subagent (`Task`), a slash
+  command, or `MultiEdit` all reach the disk by another door.
+
+- **The transcript is not a second output, and not part of the spec.** It is
+  rendered on demand by `roundtable transcript` into the temp directory and
+  opened -- never written into the worktree, never appended to the spec, which
+  is for someone who was not in the room and has to find the decision fast.
+
+- **A room has exactly one output**: `SPEC-<room>.md` at the worktree root,
+  written by the lead. Everything else -- prompts, server config, transcript --
+  lives under `.roundtable/`, which ignores itself so the spec is the only thing
+  git ever shows. Never add a second output, and never make the user choose
+  which file was the real one.
+
+The rest of the non-goals stand. Rooms plan, they do not implement.
 
 ## Architecture
 
@@ -122,7 +213,7 @@ resources/sessions.svg
 - `agentSessions.changes` — merge conflicts, staged, unstaged groups for the active session only. Click a file to open its diff.
 - `agentSessions.files` — file tree rooted at the active worktree. Collapsed by default.
 
-**Commands:** `newSession`, `refresh`, `focusTerminal`, `openChange`, `stageAll`, `revealInScm`, `removeWorktree`.
+**Commands:** `newSession`, `newRoom`, `refresh`, `focusTerminal`, `openChange`, `stageAll`, `revealInScm`, `removeWorktree`.
 
 `stageAll` and `revealInScm` are speculative. Cut them if they do not earn their place in real use.
 
