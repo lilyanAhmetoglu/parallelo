@@ -8,9 +8,23 @@ import { canonical } from './worktreeTerminals';
 
 const run = promisify(execFile);
 
-interface AgentChoice {
+export interface AgentChoice {
   label: string;
   command?: string;
+  /** Models this agent can be asked for. Omit, or give one, and nothing is asked. */
+  models?: { label: string; value?: string }[];
+  /** How this agent takes a model. Defaults to `--model`. */
+  modelFlag?: string;
+  /**
+   * Flags this agent needs in a brainstorming room, and nowhere else: the ones
+   * that point it at the room's MCP server, put its brief in its system prompt,
+   * and take away its file tools. They are per agent because they are agent
+   * syntax -- Claude Code's are not Codex's -- and they ship with a working
+   * default rather than being something to copy in by hand, because a room
+   * whose flags are missing opens two terminals that cannot reach each other
+   * and looks exactly like one that is thinking.
+   */
+  roomArgs?: string;
 }
 
 /** git's own wording, without the command line execFile prepends to it. */
@@ -297,34 +311,38 @@ async function offerToShowMainCheckout(): Promise<void> {
   await config.update('showMainCheckout', true, target);
 }
 
-export async function newSession(
+/**
+ * The checkout a new session or room branches from, initialising a repository
+ * first if there is not one yet. Undefined means the user backed out or there
+ * was nowhere to put one.
+ */
+export async function resolveBase(
   gitApi: GitAPI,
   tracker: SessionTracker
-): Promise<void> {
+): Promise<{ base: string; isMain: boolean } | undefined> {
   const located = await baseRepoRoot(gitApi, tracker);
   const base =
     located && 'root' in located
       ? located.root
       : await initRepository(gitApi, tracker, located?.damaged);
   if (!base) {
-    return;
+    return undefined;
   }
   // A repository we just initialised is a main checkout by construction.
-  const isMain = located && 'root' in located ? located.isMain : true;
+  return { base, isMain: located && 'root' in located ? located.isMain : true };
+}
 
-  const config = vscode.workspace.getConfiguration('parallelo');
-  const agents = config.get<AgentChoice[]>('agents', []);
-  const agent =
-    agents.length > 1
-      ? await vscode.window.showQuickPick(
-          agents.map(a => ({ label: a.label, description: a.command || 'no command', agent: a })),
-          { title: 'Which agent runs in this session?' }
-        )
-      : { agent: agents[0] };
-  if (!agent) {
+export async function newSession(
+  gitApi: GitAPI,
+  tracker: SessionTracker
+): Promise<void> {
+  const located = await resolveBase(gitApi, tracker);
+  if (!located) {
     return;
   }
-  const command = agent.agent?.command?.trim();
+  const { base, isMain } = located;
+
+  const config = vscode.workspace.getConfiguration('parallelo');
 
   // Not every session wants a worktree of its own. An agent that makes its own
   // (`claude --worktree` and the like) needs a checkout to make it from, and
@@ -361,7 +379,13 @@ export async function newSession(
   const on = (dir: string, branch: string | undefined) =>
     branch ? `${path.basename(dir)} on ${branch}` : path.basename(dir);
 
-  const choices: { label: string; description: string; detail: string; cwd?: string }[] = [
+  const choices: {
+    label: string;
+    description: string;
+    detail: string;
+    cwd?: string;
+    room?: boolean;
+  }[] = [
     {
       label: '$(new-folder) Worktree session',
       description: 'isolated',
@@ -391,12 +415,38 @@ export async function newSession(
     });
   }
 
+  choices.push({
+    label: '$(comment-discussion) Brainstorming room',
+    description: 'two agents',
+    detail:
+      'Two agents in one new worktree, arguing through a plan and writing a ' +
+      'spec at the end. Pick the two on the next screen',
+    room: true
+  });
+
   const scope = await vscode.window.showQuickPick(choices, {
     title: 'What kind of session is this?'
   });
   if (!scope) {
     return;
   }
+  if (scope.room) {
+    await vscode.commands.executeCommand('parallelo.newRoom');
+    return;
+  }
+
+  const agents = config.get<AgentChoice[]>('agents', []);
+  const agent =
+    agents.length > 1
+      ? await vscode.window.showQuickPick(
+          agents.map(a => ({ label: a.label, description: a.command || 'no command', agent: a })),
+          { title: 'Which agent runs in this session?' }
+        )
+      : { agent: agents[0] };
+  if (!agent) {
+    return;
+  }
+  const command = agent.agent?.command?.trim();
 
   if (scope.cwd) {
     launch(scope.cwd, agent.agent?.label ?? 'Session', command, config, false);
@@ -422,6 +472,22 @@ export async function newSession(
     return;
   }
 
+  const worktreePath = await createWorktree(gitApi, base, name, config);
+  launch(worktreePath, name, command, config, true);
+  await tracker.sync();
+}
+
+/**
+ * Add the worktree for `name`, copy the untracked files that do not come with
+ * it, and register it with the git extension. Reuses the branch if it already
+ * exists. Reports its own failure and rethrows.
+ */
+export async function createWorktree(
+  gitApi: GitAPI,
+  base: string,
+  name: string,
+  config: vscode.WorkspaceConfiguration
+): Promise<string> {
   const dir = config.get<string>('worktreePath', '.worktrees');
   const prefix = config.get<string>('branchPrefix', 'session/');
   const worktreePath = path.isAbsolute(dir)
@@ -459,9 +525,7 @@ export async function newSession(
       await gitApi.openRepository(vscode.Uri.file(worktreePath));
     }
   );
-
-  launch(worktreePath, name, command, config, true);
-  await tracker.sync();
+  return worktreePath;
 }
 
 /** Opens the terminal for a session and starts the agent in it. */
