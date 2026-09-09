@@ -8,6 +8,7 @@ import type { SessionTracker } from './sessionTracker';
 import { createWorktree, resolveBase, type AgentChoice } from './worktree';
 import type { Seeded } from './seeded';
 import { detectInstallCommand } from './worktreeSeed';
+import { statusFile } from './sessionStatus';
 import { release, reserve } from './worktreeTerminals';
 import { log } from './log';
 
@@ -323,10 +324,11 @@ export async function newRoom(
       ? (await detectInstallCommand(base)) ?? ''
       : '');
 
+  const status = await statusFile(cwd);
   const roomDir = path.join('.roundtable', name);
   const seats = [
-    open(cwd, name, 'lead', lead, roomDir, topic, budget, config, setup),
-    open(cwd, name, 'peer', peer, roomDir, topic, budget, config)
+    open(cwd, name, 'lead', lead, roomDir, topic, budget, config, setup, status),
+    open(cwd, name, 'peer', peer, roomDir, topic, budget, config, undefined, status)
   ];
   pending = { room: name, roomDir, cwd, seats };
   await release(cwd);
@@ -579,7 +581,8 @@ function open(
   topic: string,
   budget: number,
   config: vscode.WorkspaceConfiguration,
-  setup?: string
+  setup?: string,
+  status?: string
 ): SeatTerminal {
   const terminal = vscode.window.createTerminal({
     name: `${room} · ${seat}`,
@@ -592,7 +595,10 @@ function open(
       ROUNDTABLE_AGENT: agent.label,
       ROUNDTABLE_TOPIC: topic,
       ROUNDTABLE_BUDGET: String(budget),
-      ROUNDTABLE_CWD: cwd
+      ROUNDTABLE_CWD: cwd,
+      // Both seats share a worktree and so share one status file. A mark says
+      // something in this room wants you, which is the true statement available.
+      ...(status ? { PARALLELO_STATUS: status } : {})
     }
   });
   terminal.show();

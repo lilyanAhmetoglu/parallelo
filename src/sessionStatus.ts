@@ -46,7 +46,7 @@ const WORDS: Record<string, Mark> = {
  * somewhere a hook can find without being told: `git rev-parse --git-dir` from
  * the agent's own working directory names the same file.
  */
-async function statusFile(root: string): Promise<string | undefined> {
+export async function statusFile(root: string): Promise<string | undefined> {
   try {
     const { stdout } = await run('git', ['rev-parse', '--absolute-git-dir'], { cwd: root });
     return path.join(stdout.trim(), FILE);

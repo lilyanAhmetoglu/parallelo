@@ -249,6 +249,13 @@ the Changes view and the conflict radar -- the extension making noise in the
 panel it exists to keep readable. Never rebuild this from `ps`, CPU or the
 process tree.
 
+**The wiring is per agent; the contract is not.** Only Claude Code's settings
+format is written for the user, because it is the only one verified against a
+real file -- everything else is handed the two commands to paste. Guessing a
+config format writes broken settings into somebody's home directory. Terminals
+Parallelo opens also carry `PARALLELO_STATUS`, so an agent whose hooks run
+outside the project directory does not need `git rev-parse` to find the file.
+
 `stageAll` and `revealInScm` are speculative. Cut them if they do not earn their place in real use.
 
 **Settings (`agentSessions.*`):** `agents` (label + command pairs), `worktreePath` (default `.worktrees`), `branchPrefix` (default `session/`), `autoOpenRepository` (default true), `setupCommand`, `copyFiles` (default `.env`, `.env.local`), `showStatusBar`.

@@ -273,26 +273,35 @@ stayed after you had read it would be on every row by lunchtime.
 process tree, an agent waiting on a question and an agent that finished are
 identical: both alive, both holding the terminal, both using no CPU. This was
 built once from CPU sampling and removed, because the dot lit on every idle
-agent. So the signal comes from the agent's own notification hooks — the thing
-it already runs to tell you it needs you:
+agent. So the signal comes from the agent itself — from whatever it already runs
+to tell you it needs you.
+
+**The contract is two commands, and any agent can drive it.** That is the whole
+of it, and it is why this is not a Claude Code feature:
+
+```bash
+# when it needs you
+d=$(git rev-parse --absolute-git-dir 2>/dev/null) && printf 'waiting\n' > "$d/parallelo-status"
+# when it finishes
+d=$(git rev-parse --absolute-git-dir 2>/dev/null) && printf 'done\n' > "$d/parallelo-status"
+```
+
+One line covers every repository, because it finds its own. In a terminal
+Parallelo opened, `$PARALLELO_STATUS` names the same file — for an agent whose
+notification command runs somewhere git is awkward to reach from. Put them
+wherever your agent takes them: Claude Code's `Notification` and `Stop` hooks,
+Codex's `notify`, a wrapper script, a Makefile target. Nothing here reads any
+agent's private session state.
 
 ```
 Parallelo: Set Up Status Hooks
 ```
 
-That adds two hooks to `~/.claude/settings.json`, shown in full before anything
-is written, merged with whatever is already there. One covers every repository,
-because the command finds its own:
-
-```bash
-d=$(git rev-parse --absolute-git-dir 2>/dev/null) && printf 'waiting\n' > "$d/parallelo-status"
-```
-
-**Any agent can drive it** — that is the point of a file. Write `waiting` or
-`done` into `parallelo-status` in the repository's git directory, from whatever
-your agent runs when it needs you. Nothing here reads an agent's private
-session state, which is the trade that keeps this working for Codex and aider
-and a plain shell script as well as for Claude Code.
+That asks which agent you run. For Claude Code it writes the two hooks into
+`~/.claude/settings.json`, shown in full first and merged with whatever is
+already there. For anything else it hands you the two commands to paste —
+because writing a config format from memory would put broken settings in your
+home directory, and only Claude Code's has been checked against a real file.
 
 A mark means something an agent did **while Parallelo was watching**. Whatever
 is already in the file when a window opens is treated as read, so yesterday's

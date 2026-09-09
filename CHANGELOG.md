@@ -7,6 +7,14 @@
   you something, a tick when it finished its turn, both clearing when you click
   the row. `Parallelo: Set Up Status Hooks` wires it up.
 
+  Any agent can drive it. The contract is one word written into
+  `parallelo-status` in the repository's git directory — `$PARALLELO_STATUS` in
+  a terminal Parallelo opened names the same file — from whatever the agent
+  already runs when it needs you. `Set Up Status Hooks` asks which agent you
+  run: it writes Claude Code's two hooks, and hands over the commands to paste
+  for anything else, because only that format has been checked against a real
+  file and a guessed one would put broken settings in your home directory.
+
   The agent is the one that says which, because nothing outside it can tell.
   This was built once from the process tree and removed: an agent waiting on a
   question and an agent that finished are identical from outside — both alive,

@@ -6,6 +6,7 @@ import type { API as GitAPI } from './git';
 import { isLinkedWorktree, type SessionTracker } from './sessionTracker';
 import { canonical } from './worktreeTerminals';
 import { copyIgnoredFiles, detectInstallCommand } from './worktreeSeed';
+import { statusFile } from './sessionStatus';
 import type { Seeded } from './seeded';
 import { log } from './log';
 
@@ -466,7 +467,15 @@ export async function newSession(
   const command = agent.agent?.command?.trim();
 
   if (scope.cwd) {
-    launch(scope.cwd, agent.agent?.label ?? 'Session', command, config, false);
+    launch(
+      scope.cwd,
+      agent.agent?.label ?? 'Session',
+      command,
+      config,
+      false,
+      undefined,
+      await statusFile(scope.cwd)
+    );
     await tracker.sync();
     // `isListed` keys on `linked`, not on "is the main checkout", so everything
     // that is not a linked worktree is hidden by the same setting -- a
@@ -497,7 +506,7 @@ export async function newSession(
   const install = config.get<boolean>('installDependencies', true)
     ? await detectInstallCommand(base)
     : undefined;
-  launch(worktreePath, name, command, config, true, install);
+  launch(worktreePath, name, command, config, true, install, await statusFile(worktreePath));
   await tracker.sync();
 }
 
@@ -604,12 +613,19 @@ function launch(
   command: string | undefined,
   config: vscode.WorkspaceConfiguration,
   fresh: boolean,
-  install?: string
+  install?: string,
+  status?: string
 ): void {
   const terminal = vscode.window.createTerminal({
     name,
     cwd,
-    iconPath: new vscode.ThemeIcon('robot')
+    iconPath: new vscode.ThemeIcon('robot'),
+    // So an agent's "I need you" command can be one word and a redirection,
+    // with no git in it. Some agents run their notification hook somewhere
+    // other than the project directory, where `git rev-parse` finds the wrong
+    // repository or none -- and the failure is silent, which is the worst kind
+    // for a feature whose whole job is to show you something.
+    env: status ? { PARALLELO_STATUS: status } : undefined
   });
   terminal.show();
 
