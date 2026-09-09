@@ -101,7 +101,88 @@ export async function offerStatusHooks(memento: vscode.Memento): Promise<void> {
   }
 }
 
+/**
+ * The contract, in the words an agent's own configuration will need.
+ *
+ * Two commands and a sentence each. This is the whole of what makes a row light
+ * up, and it is deliberately tied to no agent: writing a word into a file is
+ * something anything can be made to do, which is the only reason this feature is
+ * not Claude-only.
+ */
+function recipe(): string {
+  return EVENTS.map(({ mark, why }) => `When ${why}:\n  ${hookCommand(mark)}`).join('\n\n');
+}
+
+/**
+ * Wire up whichever agent the user runs.
+ *
+ * Only Claude Code's configuration is written for them, because it is the only
+ * format verified against a real file. Every other agent gets the two commands
+ * to paste wherever it keeps its notification settings -- Codex's `notify`, a
+ * wrapper script, anything that runs a command on an event. A config format
+ * guessed at from memory would put broken TOML in somebody's home directory,
+ * which is worse than asking them to paste two lines.
+ */
 export async function setUpStatusHooks(): Promise<void> {
+  const agents = vscode.workspace
+    .getConfiguration('parallelo')
+    .get<{ label: string; command?: string }[]>('agents', [])
+    .filter(agent => agent.command?.trim());
+
+  const claude = agents.find(agent => /(^|[^a-z])claude([^a-z]|$)/i.test(agent.command ?? ''));
+  const others = agents.filter(agent => agent !== claude);
+
+  const choices: { label: string; description?: string; detail?: string; write?: boolean }[] = [];
+  if (claude) {
+    choices.push({
+      label: `$(check) ${claude.label}`,
+      description: 'written for you',
+      detail: 'Two hooks added to ~/.claude/settings.json, shown before anything is written',
+      write: true
+    });
+  }
+  choices.push({
+    label: others.length
+      ? `$(clippy) ${others.map(agent => agent.label).join(', ')}, or anything else`
+      : '$(clippy) Any other agent',
+    description: 'copy the two commands',
+    detail: 'Paste them wherever your agent runs a command when it needs you, or finishes'
+  });
+
+  // Nothing to choose between when there is only one way to go.
+  const picked =
+    choices.length === 1
+      ? choices[0]
+      : await vscode.window.showQuickPick(choices, {
+          title: 'Which agent should mark its sessions?'
+        });
+  if (!picked) {
+    return;
+  }
+
+  if (!picked.write) {
+    await vscode.env.clipboard.writeText(recipe());
+    await vscode.window.showInformationMessage(
+      'Copied the two commands. Anything that can run a command when it needs you can mark a session.',
+      {
+        modal: true,
+        detail:
+          `${recipe()}\n\n` +
+          'The row reads a file and does not care what wrote it. Each command writes one word ' +
+          'into the git directory of whatever repository the agent is working in, so the same ' +
+          'line works in every project and shows up in no diff. In a terminal Parallelo opened, ' +
+          '$PARALLELO_STATUS names that same file, for an agent whose hooks run somewhere git ' +
+          'is awkward to reach from.'
+      }
+    );
+    return;
+  }
+
+  await writeClaudeHooks();
+}
+
+/** Claude Code's own settings file, the one format verified against a real one. */
+async function writeClaudeHooks(): Promise<void> {
   const file = path.join(os.homedir(), '.claude', 'settings.json');
   const uri = vscode.Uri.file(file);
 
