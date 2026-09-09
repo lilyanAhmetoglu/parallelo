@@ -51,7 +51,7 @@ terminal is the only contract.**
 | ● **Waiting / done** | A session marks itself when its agent asks you something or finishes a turn. Clears when you look at it. |
 | 🎨 **Session appearance** | Name, colour and icon per worktree, remembered across reloads. |
 | 📊 **Status bar** | Active branch and change count. Click to switch session. |
-| ➕ **Start Session** | Creates the branch and worktree, copies every file git does not track, installs dependencies, launches the agent. |
+| ➕ **Start Session** | Creates the branch and worktree, copies your ignored files, installs dependencies, launches the agent. |
 | 🗑️ **Delete Worktree** | Removes the directory, keeps the branch, always asks first. Says how many sessions share that worktree, and offers to close just one. |
 
 ## 📦 Requirements
@@ -323,13 +323,15 @@ tracked files and nothing else, so a fresh session has no `.env`, no
 `node_modules`, and no local settings — which usually shows up as the agent's
 first command failing. Parallelo closes both gaps when it makes the worktree:
 
-- **Untracked files are copied** from the base checkout — everything git ignores
-  (`.env`, `.dev.vars`, `.claude/settings.local.json`) and anything never added.
+- **Ignored files are copied** from the base checkout — `.env`, `.dev.vars`,
+  `.claude/settings.local.json`: the machine's half of the project, which
+  `.gitignore` keeps out of the repository and so out of a new worktree.
   `parallelo.copyExclude` skips what is installed or rebuilt rather than carried:
   `node_modules`, `dist`, `.next`, `target`, `.venv`, caches. Names are matched
   against every part of the path, so a monorepo's `packages/ui/dist` is skipped
-  too. Off with `parallelo.copyUntrackedFiles`; `parallelo.copyFiles` still names
-  files to copy whatever else is decided.
+  too. Files that are simply un-added are left behind — those are your work in
+  progress, not the project's setup. Off with `parallelo.copyIgnoredFiles`;
+  `parallelo.copyFiles` still names files to copy whatever else is decided.
 - **Dependencies are installed** with the command the base checkout implies —
   `packageManager` in `package.json` first, then the lockfile (`bun.lock`,
   `pnpm-lock.yaml`, `yarn.lock`, `package-lock.json`). It is typed into the
@@ -339,13 +341,10 @@ first command failing. Parallelo closes both gaps when it makes the worktree:
   `parallelo.installDependencies`, and skipped entirely when you have set
   `parallelo.setupCommand` — that answers the same question yourself.
 
-Untracked files that git is *not* ignoring come across too, so a scratch file
-sitting in your main checkout starts the session as an untracked file there as
-well. That is the trade for never having to notice which local file the worktree
-was missing. The conflict radar knows what a worktree was created holding and
-does not count it, so two sessions branched from the same checkout do not warn
-about each other over a file neither agent has opened — until one of them stages
-it, at which point it is that session's work.
+A new session therefore starts with a clean `git status`: everything copied is
+ignored, so the first thing in its diff is the first thing its agent did. The
+conflict radar is told what a worktree was created holding anyway, because
+`.gitignore` is a tracked file and a branch may spell it differently.
 
 Copying is cancellable from the progress notification. An ignored directory can
 be any size, and a session creation that cannot be stopped would be worse than
@@ -376,7 +375,7 @@ moment.
 | `parallelo.installDependencies` | `true` | Install dependencies in a new worktree, using the package manager the lockfile names |
 | `parallelo.roundtable.command` | `roundtable` | The MCP server executable that brainstorming rooms run |
 | `parallelo.roundtable.budget` | `8` | Turns the lead agent gets in a room before it must write the spec |
-| `parallelo.copyUntrackedFiles` | `true` | Copy every file git does not track into each new worktree |
+| `parallelo.copyIgnoredFiles` | `true` | Copy the files `.gitignore` covers into each new worktree |
 | `parallelo.copyExclude` | `node_modules`, `dist`, caches… | Names skipped when copying, matched against every part of the path |
 | `parallelo.copyFiles` | `.env`, `.env.local` | Files always copied, even when excluded above |
 | `parallelo.sessionStatus` | `true` | Mark a session when its agent asks you something or finishes a turn |

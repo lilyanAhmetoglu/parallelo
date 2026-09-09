@@ -42,13 +42,15 @@
   `node_modules` to run with. Starting a worktree session now fixes both before
   the agent starts.
 
-  Every file git does not track is copied from the base checkout — ignored files
-  such as `.env` and `.claude/settings.local.json`, and files never added.
+  The files `.gitignore` covers are copied from the base checkout — `.env`,
+  `.claude/settings.local.json`, the machine's half of the project.
   `parallelo.copyExclude` skips what is installed or rebuilt rather than carried:
   `node_modules`, `dist`, `.next`, `target`, `.venv`, caches. Names match against
   every part of the path, so build output nested in a monorepo is skipped as
-  well, and `.worktrees` is never copied into a worktree. Off with
-  `parallelo.copyUntrackedFiles`.
+  well, and `.worktrees` is never copied into a worktree. Files that are merely
+  un-added stay behind — those are your work in progress, and carrying them
+  would start every new session with a scratch file already in its diff. Off
+  with `parallelo.copyIgnoredFiles`.
 
   Dependencies are then installed with the command the base checkout implies:
   `packageManager` in `package.json` first, then the lockfile — `bun.lock`,
@@ -61,12 +63,13 @@
   `parallelo.installDependencies`, and not used at all when
   `parallelo.setupCommand` is set, since that answers the same question by hand.
 
-  Copying is cancellable — an ignored directory can be any size — and symlinks
-  pointing at directories are skipped rather than followed out of the
-  repository. The conflict radar is told what each worktree was created
-  holding and subtracts it, so two sessions branched from the same checkout do
-  not warn about each other over an untracked file neither agent has opened.
-  Staging one makes it that session's work again.
+  A directory git collapses into one entry is asked about again rather than
+  copied whole: `packages/` may hold no tracked files and still contain plenty
+  git is not ignoring. Copying is cancellable — an ignored directory can be any
+  size — and symlinks pointing at directories are skipped rather than followed
+  out of the repository. The conflict radar is told what each worktree was
+  created holding, since `.gitignore` is itself tracked and a branch may spell
+  it differently.
 
 ### Changed
 - `parallelo.copyFiles` is now the list of files copied *whatever else is

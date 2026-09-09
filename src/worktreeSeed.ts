@@ -32,36 +32,31 @@ function matcher(pattern: string): RegExp {
 }
 
 /**
- * Everything in the base checkout that git does not track: ignored files --
- * `.env`, `.dev.vars`, a local settings file -- and files never added.
+ * The ignored files in the base checkout, as few entries as git will give.
  *
- * A worktree checks out tracked content and nothing else, which is the whole
- * reason this exists: the agent you just started is looking at a repository
- * that cannot reach its own database, because the file holding the URL was
- * never git's to copy.
+ * Ignored, not merely untracked. A worktree checks out tracked content and
+ * nothing else, and the gap that matters is `.gitignore`'s: `.env`,
+ * `.dev.vars`, a local settings file -- the machine's half of the project,
+ * which the agent you just started cannot work without. Files that are simply
+ * un-added are your own work in progress; carrying them across would start
+ * every new session with someone else's scratch file already in its diff.
  *
- * Two listings rather than one. `--others` alone gives untracked-but-not-
- * ignored; adding `--ignored` gives only the ignored ones. `git status
- * --porcelain --ignored` would answer in a single call and also drag in every
- * modified tracked file, which belongs to the branch, not to the machine.
- *
- * `--directory` is what makes this affordable. A wholly untracked directory
+ * `--directory` is what makes this affordable. A wholly ignored directory
  * prints as `node_modules/` instead of its forty thousand files, so nothing
  * walks into it before the exclude list has had its say.
  */
-async function untrackedEntries(base: string): Promise<string[]> {
-  const [ignored, others] = await Promise.all([
-    git(base, ['ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z']),
-    git(base, ['ls-files', '--others', '--exclude-standard', '--directory', '-z'])
-  ]);
-  const listed = [...entries(ignored), ...entries(others)]
+async function ignoredEntries(base: string): Promise<string[]> {
+  const listed = entries(
+    await git(base, [
+      'ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z'
+    ])
+  )
     .map(entry => entry.replace(/\/+$/, ''))
     .filter(Boolean);
 
-  // The two listings overlap, and each one repeats itself: git prints the
-  // collapsed `.claude/` *and* the `.claude/settings.local.json` inside it.
-  // Keeping only the outermost entry of each branch is what stops a directory
-  // being copied once as a whole and again file by file.
+  // git repeats itself: it prints the collapsed `.claude/` *and* the
+  // `.claude/settings.local.json` inside it. Keeping only the outermost entry
+  // of each branch is what stops a directory being handled twice.
   const outermost: string[] = [];
   for (const entry of [...new Set(listed)].sort((a, b) => a.length - b.length)) {
     if (!outermost.some(kept => entry === kept || entry.startsWith(`${kept}/`))) {
@@ -71,6 +66,25 @@ async function untrackedEntries(base: string): Promise<string[]> {
   return outermost;
 }
 
+/**
+ * The ignored files inside one directory, named individually.
+ *
+ * A collapsed entry is not a promise that everything under it is ignored: git
+ * prints `packages/` for a directory holding no tracked files, and what is
+ * inside may be a mix. Copying such a directory wholesale would carry files
+ * git is not ignoring -- exactly what this is supposed to leave behind -- so
+ * the directory is asked about again without `--directory`, which names only
+ * the ignored ones. Affordable because the directories that reach here are
+ * small: the big ones were excluded by name before anything was opened.
+ */
+async function ignoredWithin(base: string, dir: string): Promise<string[]> {
+  return entries(
+    await git(base, [
+      'ls-files', '--others', '--ignored', '--exclude-standard', '-z', '--', dir
+    ])
+  ).filter(Boolean);
+}
+
 /** Whether `child` is `parent` or sits underneath it. */
 function within(parent: string, child: string): boolean {
   const rel = path.relative(parent, child);
@@ -78,31 +92,22 @@ function within(parent: string, child: string): boolean {
 }
 
 /**
- * Copies one listed entry, descending into it if it is a directory.
+ * Copies one file into the worktree, recording it if it lands.
  *
- * The descent is ours rather than a single `fs.copy` of the whole directory
- * because a collapsed entry hides its own exclusions: git prints `packages/`
- * for a directory whose only contents are ignored, and copying that in one call
- * would carry the `packages/ui/dist` inside it however plainly `dist` is
- * excluded. Directories that reach this point are small -- the expensive ones
- * were excluded by name before anything was opened.
- *
- * Appends what it copied to `copied`, repo-relative and forward-slashed, which
- * is how git spells paths and so how the radar will look them up.
+ * `stat` follows a link and ORs the bits, so a symlink to a directory arrives
+ * as Directory | SymbolicLink. Those are skipped: the target is usually outside
+ * the repository -- a cache, a shared data mount -- so nothing under it was
+ * ever weighed against the exclude list, and copying it drags an unbounded tree
+ * into the worktree. A symlink to a file is copied as the file it names, which
+ * is what it is for.
  */
-async function copyTree(
+async function copyOne(
   from: string,
   to: string,
   rel: string,
-  excluded: (name: string) => boolean,
-  token: vscode.CancellationToken,
   copied: string[],
   log: (message: string) => void
 ): Promise<void> {
-  if (token.isCancellationRequested) {
-    return;
-  }
-
   let type: vscode.FileType;
   try {
     type = (await vscode.workspace.fs.stat(vscode.Uri.file(from))).type;
@@ -110,41 +115,8 @@ async function copyTree(
     log(`seed: skipped ${rel}: ${error}`);
     return;
   }
-
-  // `stat` follows the link and ORs the bits, so a symlink to a directory
-  // arrives as Directory | SymbolicLink. It is skipped rather than copied: the
-  // target is usually outside the repository -- a cache, a shared data mount --
-  // so nothing under it was ever weighed against the exclude list, and copying
-  // it drags an unbounded tree into the worktree. A symlink to a file is
-  // copied as the file it names, which is what it is for.
-  const isLink = (type & vscode.FileType.SymbolicLink) !== 0;
-  const isDirectory = (type & vscode.FileType.Directory) !== 0;
-  if (isLink && isDirectory) {
+  if ((type & vscode.FileType.Directory) !== 0) {
     log(`seed: skipped ${rel}: symlink to a directory`);
-    return;
-  }
-
-  if (isDirectory) {
-    let children: [string, vscode.FileType][];
-    try {
-      children = await vscode.workspace.fs.readDirectory(vscode.Uri.file(from));
-    } catch (error) {
-      log(`seed: skipped ${rel}: ${error}`);
-      return;
-    }
-    for (const [name] of children) {
-      if (!excluded(name)) {
-        await copyTree(
-          path.join(from, name),
-          path.join(to, name),
-          `${rel}/${name}`,
-          excluded,
-          token,
-          copied,
-          log
-        );
-      }
-    }
     return;
   }
 
@@ -162,7 +134,7 @@ async function copyTree(
 }
 
 /**
- * Copies the base checkout's untracked files into a new worktree.
+ * Copies the base checkout's ignored files into a new worktree.
  *
  * Returns the paths copied, repo-relative, so the conflict radar can tell them
  * apart from anything an agent wrote. Never throws: a session that starts
@@ -173,7 +145,7 @@ async function copyTree(
  * and a session creation that cannot be stopped is worse than one that copies
  * nothing.
  */
-export async function copyUntrackedFiles(
+export async function copyIgnoredFiles(
   base: string,
   worktreePath: string,
   config: vscode.WorkspaceConfiguration,
@@ -181,20 +153,21 @@ export async function copyUntrackedFiles(
   log: (message: string) => void
 ): Promise<string[]> {
   const excludes = config.get<string[]>('copyExclude', []).map(matcher);
-  const excluded = (name: string) => excludes.some(exclude => exclude.test(name));
+  const excluded = (rel: string) =>
+    rel.split('/').some(segment => excludes.some(exclude => exclude.test(segment)));
 
   // Where worktrees live, so a new one is never seeded with its siblings.
   // `.worktrees` is ignored in most repositories, which means git lists it as
-  // one untracked directory and a plain copy would put every existing session
-  // -- checkouts, `.git` files and all -- inside the session being created.
+  // one directory and a plain copy would put every existing session --
+  // checkouts, `.git` files and all -- inside the session being created.
   const dir = config.get<string>('worktreePath', '.worktrees');
   const container = path.isAbsolute(dir) ? dir : path.join(base, dir);
 
   let listed: string[];
   try {
-    listed = await untrackedEntries(base);
+    listed = await ignoredEntries(base);
   } catch (error) {
-    log(`seed: could not list untracked files: ${error}`);
+    log(`seed: could not list ignored files: ${error}`);
     return [];
   }
 
@@ -203,7 +176,7 @@ export async function copyUntrackedFiles(
     if (token.isCancellationRequested) {
       break;
     }
-    if (rel === '.git' || rel.split('/').some(excluded)) {
+    if (rel === '.git' || excluded(rel)) {
       continue;
     }
     const from = path.join(base, rel);
@@ -212,7 +185,41 @@ export async function copyUntrackedFiles(
     if (within(container, from) || within(from, container) || within(from, worktreePath)) {
       continue;
     }
-    await copyTree(from, path.join(worktreePath, rel), rel, excluded, token, copied, log);
+
+    let directory = false;
+    try {
+      const stat = await vscode.workspace.fs.stat(vscode.Uri.file(from));
+      // A symlink is a file to git and has to stay one here, or a link to a
+      // directory would be enumerated and followed out of the repository.
+      directory =
+        (stat.type & vscode.FileType.Directory) !== 0 &&
+        (stat.type & vscode.FileType.SymbolicLink) === 0;
+    } catch (error) {
+      log(`seed: skipped ${rel}: ${error}`);
+      continue;
+    }
+
+    if (!directory) {
+      await copyOne(from, path.join(worktreePath, rel), rel, copied, log);
+      continue;
+    }
+
+    let inside: string[];
+    try {
+      inside = await ignoredWithin(base, rel);
+    } catch (error) {
+      log(`seed: skipped ${rel}: ${error}`);
+      continue;
+    }
+    for (const file of inside) {
+      if (token.isCancellationRequested) {
+        break;
+      }
+      if (excluded(file)) {
+        continue;
+      }
+      await copyOne(path.join(base, file), path.join(worktreePath, file), file, copied, log);
+    }
   }
   return copied;
 }

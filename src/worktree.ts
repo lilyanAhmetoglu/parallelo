@@ -5,7 +5,7 @@ import { promisify } from 'util';
 import type { API as GitAPI } from './git';
 import { isLinkedWorktree, type SessionTracker } from './sessionTracker';
 import { canonical } from './worktreeTerminals';
-import { copyUntrackedFiles, detectInstallCommand } from './worktreeSeed';
+import { copyIgnoredFiles, detectInstallCommand } from './worktreeSeed';
 import type { Seeded } from './seeded';
 import { log } from './log';
 
@@ -555,20 +555,25 @@ export async function createWorktree(
         }
       }
 
-      // Then everything else git does not track. A named list only covers the
+      // Then everything else `.gitignore` covers. A named list only covers the
       // files someone thought to name, and the one that stops the session
       // working is always the one they did not.
-      if (config.get<boolean>('copyUntrackedFiles', true)) {
+      //
+      // Ignored, not merely untracked. Files that are simply un-added are your
+      // own work in progress, and copying them starts every new session with
+      // someone else's scratch file already in its diff.
+      if (config.get<boolean>('copyIgnoredFiles', true)) {
         progress.report({ message: 'Copying local files' });
-        const copied = await copyUntrackedFiles(base, worktreePath, config, token, log);
+        const copied = await copyIgnoredFiles(base, worktreePath, config, token, log);
         log(
-          `seed: copied ${copied.length} untracked ` +
+          `seed: copied ${copied.length} ignored ` +
             `${copied.length === 1 ? 'file' : 'files'} into ${name}`
         );
-        // What was copied is not what this session edited. Untracked files that
-        // git is not ignoring arrive in the worktree as untracked files, which
-        // is exactly what the conflict radar counts -- so it is told, and
-        // subtracts them until an agent stages one.
+        // What was copied is not what this session edited. An ignored file is
+        // invisible to the radar in the ordinary case -- but only while the
+        // worktree's own `.gitignore` still ignores it, and that file is
+        // tracked, so a branch may spell it differently. Tell the radar and let
+        // it subtract them rather than depending on two branches agreeing.
         await seeded?.record(worktreePath, copied);
       }
 
