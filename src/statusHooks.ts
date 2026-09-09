@@ -32,6 +32,63 @@ interface HookEntry {
  * `Stop` hook that plays a sound has to keep it; a settings file is not ours to
  * rewrite, and the entries we add are recognisable enough to add exactly once.
  */
+/**
+ * Whether this machine has an agent whose hooks are wired to the session rows.
+ *
+ * Undefined means the question does not apply -- no Claude Code settings file,
+ * so either another agent is in use or none is, and either way there is nothing
+ * useful to say about hooks it does not have.
+ */
+export async function hooksWired(): Promise<boolean | undefined> {
+  const file = path.join(os.homedir(), '.claude', 'settings.json');
+  let settings: Record<string, unknown>;
+  try {
+    settings = JSON.parse(
+      new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.file(file)))
+    ) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+  const hooks = (settings.hooks ?? {}) as Record<string, HookEntry[]>;
+  return EVENTS.some(({ event }) =>
+    (hooks[event] ?? []).some(entry => entry.hooks?.some(h => isOurs(h.command)))
+  );
+}
+
+const OFFERED = 'parallelo.statusHooksOffered';
+
+/**
+ * Say once that the marks need wiring, rather than showing nothing forever.
+ *
+ * A feature that is on by default and silently does nothing until a command is
+ * run is indistinguishable from one that is broken -- which is exactly how it
+ * read the first time it was tried. Offered once per machine, only when there
+ * is a Claude Code to offer it for, and never again whichever button is
+ * pressed: a prompt that returns is worse than the silence it replaced.
+ */
+export async function offerStatusHooks(memento: vscode.Memento): Promise<void> {
+  if (memento.get<boolean>(OFFERED, false)) {
+    return;
+  }
+  if (!vscode.workspace.getConfiguration('parallelo').get<boolean>('sessionStatus', true)) {
+    return;
+  }
+  if ((await hooksWired()) !== false) {
+    return;
+  }
+
+  await memento.update(OFFERED, true);
+  const set = 'Set Them Up';
+  const chosen = await vscode.window.showInformationMessage(
+    'Sessions can show a dot when an agent asks you something and a tick when it finishes. ' +
+      'It needs two hooks in your agent, which it has to write itself.',
+    set
+  );
+  if (chosen === set) {
+    await setUpStatusHooks();
+  }
+}
+
 export async function setUpStatusHooks(): Promise<void> {
   const file = path.join(os.homedir(), '.claude', 'settings.json');
   const uri = vscode.Uri.file(file);

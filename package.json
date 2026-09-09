@@ -282,6 +282,11 @@
           "command": "parallelo.findInChanges",
           "when": "view == worktreeSessions.changes",
           "group": "navigation@0"
+        },
+        {
+          "command": "parallelo.setUpStatusHooks",
+          "when": "view == worktreeSessions.sessions",
+          "group": "9_config"
         }
       ],
       "view/item/context": [
