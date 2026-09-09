@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.2.0] - 2026-09-09
 
 ### Added
 - **A session says when it wants you.** A dot on the row when its agent asked

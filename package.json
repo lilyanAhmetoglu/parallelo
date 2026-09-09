@@ -2,7 +2,7 @@
   "name": "parallelo-session",
   "displayName": "Parallelo Session",
   "description": "Binds the active terminal to its git worktree. Switch terminals, and the changes and files views follow.",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "publisher": "LilyanALDIMASHKI",
   "license": "MIT",
   "engines": {
