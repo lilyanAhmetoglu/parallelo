@@ -134,22 +134,22 @@ export class SessionStatus implements vscode.Disposable {
     const on = vscode.workspace
       .getConfiguration('parallelo')
       .get<boolean>('sessionStatus', true);
-    const wanted = new Set(on ? roots : []);
-    let dropped = false;
+    if (!on) {
+      this.stop();
+      return;
+    }
+    const wanted = new Set(roots);
+    // Stop watching a worktree nothing is open in any more -- but keep what it
+    // was showing. This runs on every session change, including the ones where
+    // a terminal's directory is momentarily unresolved, and a mark deleted
+    // there is gone for good: the re-watch a moment later records whatever is
+    // on disk as already seen. That is a tick vanishing when you press refresh,
+    // with nothing in the log to say why.
     for (const [root, disposables] of this.watchers) {
       if (!wanted.has(root)) {
         disposables.forEach(d => d.dispose());
         this.watchers.delete(root);
-        // A mark that was on a row a moment ago has to be taken off it. The
-        // setting being turned off comes through here, and without this the
-        // dot stays painted until some unrelated event repaints the view.
-        dropped = this.marks.delete(root) || dropped;
-        this.seen.delete(root);
-        this.files.delete(root);
       }
-    }
-    if (dropped) {
-      this._onDidChange.fire();
     }
 
     let changed = false;
@@ -186,8 +186,13 @@ export class SessionStatus implements vscode.Disposable {
         watcher.onDidDelete(reread)
       ]);
       log(`status: watching ${file}`);
-      // Whatever is already there was written before anyone was watching.
-      this.seen.set(root, await modified(file));
+      // Whatever is already there was written before anyone was watching --
+      // but only the first time this worktree is seen. Re-watching one we were
+      // watching a moment ago must not re-read its file as history, or every
+      // refresh would quietly retire the mark it is meant to be repainting.
+      if (!this.seen.has(root)) {
+        this.seen.set(root, await modified(file));
+      }
     }
     if (changed) {
       this._onDidChange.fire();
@@ -248,6 +253,27 @@ export class SessionStatus implements vscode.Disposable {
     this.seen.set(root, file ? await modified(file) : Date.now());
     this.marks.delete(root);
     this._onDidChange.fire();
+  }
+
+  /**
+   * Turned off: stop watching and take every mark off the rows.
+   *
+   * The one place marks are thrown away wholesale, and it is deliberate --
+   * somebody switching the feature off is asking for the rows to go back to
+   * normal now, not at the next repaint.
+   */
+  private stop(): void {
+    for (const disposables of this.watchers.values()) {
+      disposables.forEach(d => d.dispose());
+    }
+    this.watchers.clear();
+    this.files.clear();
+    this.seen.clear();
+    const painted = this.marks.size > 0;
+    this.marks.clear();
+    if (painted) {
+      this._onDidChange.fire();
+    }
   }
 
   dispose(): void {

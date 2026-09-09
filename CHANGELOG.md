@@ -25,9 +25,10 @@
   file when a window opens counts as read, so a tick from yesterday is not
   waiting for you this morning. Off with `parallelo.sessionStatus`.
 
-- **A room asks where its spec goes.** The prompt starts at `SPEC-<room>.md` at
-  the worktree root, and `docs/specs/<room>.md` works as well — the directories
-  are made when the spec is written. A room still has exactly one output; what
+- **A room asks where its spec goes.** You are offered `SPEC-<room>.md` at the
+  worktree root, an existing `docs/specs` or `docs` if the repository has one, a
+  folder browser, and a plain path box — the directories are made when the spec
+  is written, so a folder that does not exist yet is fine. A room still has exactly one output; what
   is chosen is where it lands, never which of two files was the real one.
 
   The location is settled once, by `roundtable seed --spec`, in the `room.json`

@@ -231,10 +231,12 @@ Worth knowing before you run one:
 
 ## What a room leaves behind
 
-One file, and you say where it goes when you create the room — the prompt
-starts at **`SPEC-<room>.md`** in the root of the worktree, and
-`docs/specs/<room>.md` works just as well; the directories are made when the
-spec is written. That is the room's output and the only thing you need to read — the decision in the first
+One file, and you say where it goes when you create the room. You are offered
+**`SPEC-<room>.md`** in the root of the worktree, an existing `docs/specs` or
+`docs` if the repository has one, a folder browser, and a plain path box — the
+directories are made when the spec is written, so a folder that does not exist
+yet is fine. Browsing shows the base checkout, because the worktree does not
+exist yet and will hold the same directories anyway. That is the room's output and the only thing you need to read — the decision in the first
 paragraph, then the reasoning, the work broken into steps, and a **Dissent**
 section holding whatever the peer still disagrees with, in its own words.
 

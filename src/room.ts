@@ -47,6 +47,115 @@ interface Seated {
  * arguing about it; two worktrees would give them two different repositories to
  * disagree about, and two transcripts that never meet.
  */
+/**
+ * Where the spec goes, as a path relative to the worktree.
+ *
+ * A list rather than an input box, because "somewhere in the files" is a
+ * folder you recognise when you see it, not a path you want to spell. Browsing
+ * shows the *base* checkout: the new worktree does not exist yet, and it will
+ * hold the same tracked directories anyway, so picking `docs/specs` there means
+ * `docs/specs` in the room.
+ *
+ * Undefined means the user backed out, at any step.
+ */
+async function chooseSpecPath(base: string, name: string): Promise<string | undefined> {
+  const file = `SPEC-${name}.md`;
+  const suggestions: { label: string; description?: string; detail?: string; value?: string; browse?: boolean; type?: boolean }[] = [
+    {
+      label: `$(file) ${file}`,
+      description: 'worktree root',
+      detail: 'Where a room has always put it, and the only thing git will show you',
+      value: file
+    }
+  ];
+
+  // Offered only where it would land somewhere that exists. A suggestion
+  // pointing at a directory this repository does not have is a guess wearing
+  // the clothes of a convention.
+  for (const dir of ['docs/specs', 'docs', 'specs']) {
+    if (await isDirectory(path.join(base, dir))) {
+      suggestions.push({
+        label: `$(folder) ${dir}/${file}`,
+        description: 'existing folder',
+        value: `${dir}/${file}`
+      });
+      break;
+    }
+  }
+
+  suggestions.push(
+    {
+      label: '$(folder-opened) Choose a folder...',
+      detail: 'Browse the checkout. The file is still named after the room',
+      browse: true
+    },
+    { label: '$(edit) Type a path...', detail: 'Relative to the worktree', type: true }
+  );
+
+  const picked = await vscode.window.showQuickPick(suggestions, {
+    title: 'Where should the spec go?'
+  });
+  if (!picked) {
+    return undefined;
+  }
+  if (picked.value) {
+    return picked.value;
+  }
+
+  if (picked.browse) {
+    const chosen = await vscode.window.showOpenDialog({
+      title: 'Choose a folder for the spec',
+      defaultUri: vscode.Uri.file(base),
+      canSelectFiles: false,
+      canSelectFolders: true,
+      canSelectMany: false,
+      openLabel: 'Put the spec here'
+    });
+    const folder = chosen?.[0]?.fsPath;
+    if (!folder) {
+      return undefined;
+    }
+    // The dialog can go anywhere on the disk. A spec is a plan about this
+    // repository and has to land inside it, so a folder outside says so rather
+    // than being quietly rewritten to somewhere the user did not pick.
+    const relative = path.relative(base, folder);
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+      vscode.window.showErrorMessage(
+        `${path.basename(folder)} is outside ${path.basename(base)}. ` +
+          'The spec is written inside the room\'s own worktree.'
+      );
+      return undefined;
+    }
+    return relative ? `${relative}/${file}` : file;
+  }
+
+  return vscode.window.showInputBox({
+    title: 'Where should the spec go?',
+    prompt: 'Relative to the worktree.',
+    value: file,
+    valueSelection: [0, `SPEC-${name}`.length],
+    validateInput: value => {
+      const wanted = value.trim();
+      if (!wanted) {
+        return 'A room writes one file. Name it.';
+      }
+      if (path.isAbsolute(wanted) || path.normalize(wanted).split(path.sep).includes('..')) {
+        return 'Keep it inside the worktree -- the spec is a plan about this repository.';
+      }
+      return undefined;
+    }
+  });
+}
+
+async function isDirectory(target: string): Promise<boolean> {
+  try {
+    const stat = await vscode.workspace.fs.stat(vscode.Uri.file(target));
+    return (stat.type & vscode.FileType.Directory) !== 0;
+  } catch {
+    return false;
+  }
+}
+
 export async function newRoom(
   gitApi: GitAPI,
   tracker: SessionTracker,
@@ -123,24 +232,7 @@ export async function newRoom(
   //
   // Still exactly one output. The choice is where the file lands, never which
   // of two files was the real one.
-  const specPath = await vscode.window.showInputBox({
-    title: 'Brainstorming room',
-    prompt: 'Where should the spec go? Relative to the worktree.',
-    value: `SPEC-${name}.md`,
-    // The directories are made when the spec is written, so a path into a
-    // folder that does not exist yet is fine and is the common case.
-    valueSelection: [0, `SPEC-${name}`.length],
-    validateInput: value => {
-      const wanted = value.trim();
-      if (!wanted) {
-        return 'A room writes one file. Name it.';
-      }
-      if (path.isAbsolute(wanted) || path.normalize(wanted).split(path.sep).includes('..')) {
-        return 'Keep it inside the worktree -- the spec is a plan about this repository.';
-      }
-      return undefined;
-    }
-  });
+  const specPath = await chooseSpecPath(base, name);
   if (!specPath) {
     return;
   }
