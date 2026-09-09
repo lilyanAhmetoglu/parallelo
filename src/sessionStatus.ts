@@ -118,6 +118,27 @@ export class SessionStatus implements vscode.Disposable {
   /** Fires when a mark appears, changes or clears. */
   readonly onDidChange = this._onDidChange.event;
 
+  /**
+   * Re-read every worktree being watched.
+   *
+   * The watcher is the fast path, not the only one. The status file lives
+   * inside `.git`, which is inside the workspace, so VS Code serves it from the
+   * workspace's own recursive watcher rather than one of ours -- and what that
+   * watcher ignores is a setting (`files.watcherExclude`) plus whatever the
+   * platform decides. A feature that shows nothing when it misses an event is
+   * indistinguishable from a broken one, and this one has already been reported
+   * as broken twice.
+   *
+   * So it is also read on the events the extension already receives: a terminal
+   * change, a git state change in a tracked repository. An agent finishing a
+   * turn almost always causes one, which makes the fallback land at roughly the
+   * same moment as the event it is standing in for. One `stat` per open
+   * worktree, no timer.
+   */
+  async refresh(): Promise<void> {
+    await Promise.all([...this.watchers.keys()].map(root => this.read(root)));
+  }
+
   /** What to show on this worktree's row, or nothing. */
   get(root: string | undefined): Mark | undefined {
     return root === undefined ? undefined : this.marks.get(root);

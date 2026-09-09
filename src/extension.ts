@@ -322,17 +322,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // between terminals.
     tracker.onDidChangeSessions(() => void stampBaselines()),
     sessionStatus,
-    // Watch exactly the worktrees that have sessions in them, and no others.
-    tracker.onDidChangeSessions(
-      () =>
-        void sessionStatus.sync([
+    // Watch exactly the worktrees that have sessions in them, and no others --
+    // and re-read them here too, rather than trusting the watcher to be the
+    // only way a write is ever noticed.
+    tracker.onDidChangeSessions(() => {
+      void sessionStatus
+        .sync([
           ...new Set(
             tracker.allSessions
               .map(session => session.root)
               .filter((root): root is string => root !== undefined)
           )
         ])
-    ),
+        .then(() => sessionStatus.refresh());
+    }),
+    tracker.onDidChangeSession(() => void sessionStatus.refresh()),
     // Looking at the session is the acknowledgement. A tick that stayed after
     // you had read it would be on every row by lunchtime and would stop meaning
     // anything.
@@ -387,6 +391,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('parallelo.refresh', async () => {
       await tracker.syncAll();
       await tracker.activeSession?.repository?.status();
+      await sessionStatus.refresh();
       changes.refresh();
       files.refresh();
       sessions.refresh();

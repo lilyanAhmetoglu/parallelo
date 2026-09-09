@@ -7,6 +7,7 @@ import type { API as GitAPI } from './git';
 import type { SessionTracker } from './sessionTracker';
 import { createWorktree, resolveBase, type AgentChoice } from './worktree';
 import type { Seeded } from './seeded';
+import { detectInstallCommand } from './worktreeSeed';
 import { release, reserve } from './worktreeTerminals';
 import { log } from './log';
 
@@ -311,9 +312,20 @@ export async function newRoom(
     Buffer.from(JSON.stringify({ mcpServers: { roundtable: { command: binary, args: [] } } }, null, 2) + '\n', 'utf8')
   );
 
+  // A room's worktree is a checkout like any other, and someone reads the code
+  // in it afterwards -- so it gets the same install a session would, once, in
+  // the lead's terminal. It was skipped entirely on the grounds that a seat
+  // never runs the code it is planning, which was true of the seats and wrong
+  // about the worktree they leave behind.
+  const setup =
+    config.get<string>('setupCommand', '').trim() ||
+    (config.get<boolean>('installDependencies', true)
+      ? (await detectInstallCommand(base)) ?? ''
+      : '');
+
   const roomDir = path.join('.roundtable', name);
   const seats = [
-    open(cwd, name, 'lead', lead, roomDir, topic, budget, config),
+    open(cwd, name, 'lead', lead, roomDir, topic, budget, config, setup),
     open(cwd, name, 'peer', peer, roomDir, topic, budget, config)
   ];
   pending = { room: name, roomDir, cwd, seats };
@@ -566,7 +578,8 @@ function open(
   roomDir: string,
   topic: string,
   budget: number,
-  config: vscode.WorkspaceConfiguration
+  config: vscode.WorkspaceConfiguration,
+  setup?: string
 ): SeatTerminal {
   const terminal = vscode.window.createTerminal({
     name: `${room} · ${seat}`,
@@ -584,11 +597,10 @@ function open(
   });
   terminal.show();
 
-  // Only what the user wrote. The install `installDependencies` picks for a
-  // normal session is deliberately not run here: both seats share one checkout,
-  // so it would run twice over the same `node_modules`, and a seat holds no
-  // Bash tool and never runs the code it is planning.
-  const setup = config.get<string>('setupCommand', '').trim();
+  // In one seat's terminal only -- the caller decides which, and it is the
+  // lead. Both seats share a checkout, so running an install in each of them
+  // means two package managers writing one `node_modules` at the same time.
+  // That is not a slower install, it is a broken one.
   if (setup) {
     terminal.sendText(setup);
   }
