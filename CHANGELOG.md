@@ -52,12 +52,18 @@
   would start every new session with a scratch file already in its diff. Off
   with `parallelo.copyIgnoredFiles`.
 
-  Dependencies are then installed with the command the base checkout implies:
-  `packageManager` in `package.json` first, then the lockfile — `bun.lock`,
-  `pnpm-lock.yaml`, `yarn.lock`, `package-lock.json`. It is typed into the
-  terminal like any other line rather than run out of sight. When none of those
-  identify a package manager, nothing is run: `npm install` in a bun project
-  writes a `package-lock.json` into the fresh worktree and builds a
+  Dependencies are then installed with the command the base checkout implies —
+  in whatever language the project is written in. Every one of them keeps its
+  dependencies out of the repository, so no worktree ever comes with them:
+  bun, pnpm, yarn and npm (with `packageManager` outranking any lockfile), deno,
+  uv, poetry, pdm, pipenv and pip, cargo, go, bundler, composer, mix, swift,
+  gradle and maven, dotnet, and dart or flutter told apart by the manifest. A
+  repository holding two gets both, joined with `&&`, because running only the
+  first would leave half of it unable to start.
+
+  It is typed into the terminal like any other line rather than run out of
+  sight. When nothing identifies a manager, nothing is run: `npm install` in a
+  bun project writes a `package-lock.json` into the fresh worktree and builds a
   `node_modules` the project disagrees with, and a `package.json` kept only for
   tooling in a Go or Rust repo is the same story. Off with
   `parallelo.installDependencies`, and not used at all when
