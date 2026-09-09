@@ -48,6 +48,7 @@ terminal is the only contract.**
 | 🗂️ **Sessions** | Every terminal in a worktree, with branch, drift (`↑2 ↓1`) and change count. Drag to reorder, drag to pin. |
 | 🌲 **Files** | A file tree rooted at the active worktree. |
 | 🚀 **Every worktree from the start** | A terminal opens in each one when the window does, so none stays invisible. |
+| ● **Waiting / done** | A session marks itself when its agent asks you something or finishes a turn. Clears when you look at it. |
 | 🎨 **Session appearance** | Name, colour and icon per worktree, remembered across reloads. |
 | 📊 **Status bar** | Active branch and change count. Click to switch session. |
 | ➕ **Start Session** | Creates the branch and worktree, copies every file git does not track, installs dependencies, launches the agent. |
@@ -249,6 +250,54 @@ Choosing the location needs `roundtable-mcp` 0.2.0 or newer. An older one
 writes `SPEC-<room>.md` and Parallelo says so rather than letting the file turn
 up somewhere you did not expect.
 
+## ● Which session is waiting for you
+
+Four agents running. Which one asked a question six minutes ago, and which is
+still working? Today you click all four to find out.
+
+A session row shows a **dot** when its agent needs you and a **tick** when it
+has finished its turn. Both clear the moment you click the row — a mark that
+stayed after you had read it would be on every row by lunchtime.
+
+**The agent says which it is, because nothing outside it can tell.** From the
+process tree, an agent waiting on a question and an agent that finished are
+identical: both alive, both holding the terminal, both using no CPU. This was
+built once from CPU sampling and removed, because the dot lit on every idle
+agent. So the signal comes from the agent's own notification hooks — the thing
+it already runs to tell you it needs you:
+
+```
+Parallelo: Set Up Status Hooks
+```
+
+That adds two hooks to `~/.claude/settings.json`, shown in full before anything
+is written, merged with whatever is already there. One covers every repository,
+because the command finds its own:
+
+```bash
+d=$(git rev-parse --absolute-git-dir 2>/dev/null) && printf 'waiting\n' > "$d/parallelo-status"
+```
+
+**Any agent can drive it** — that is the point of a file. Write `waiting` or
+`done` into `parallelo-status` in the repository's git directory, from whatever
+your agent runs when it needs you. Nothing here reads an agent's private
+session state, which is the trade that keeps this working for Codex and aider
+and a plain shell script as well as for Claude Code.
+
+A mark means something an agent did **while Parallelo was watching**. Whatever
+is already in the file when a window opens is treated as read, so yesterday's
+tick is not on the row this morning — and because a mark is tracked by when it
+was written rather than by what it says, an agent that finishes twice in a row
+lights the row twice, even though it wrote the same word both times.
+
+The file lives in the git directory rather than the worktree, so it never
+appears in `git status`, the Changes view, or the conflict radar. A linked
+worktree has its own, so sessions do not collide — though two terminals in one
+worktree share a directory and so share the mark, which is true: something in
+there wants you.
+
+Off with `parallelo.sessionStatus`.
+
 ## 💡 Things worth knowing
 
 > ⚠️ **`git stash` is shared across all worktrees.** `refs/stash` lives in the
@@ -328,6 +377,7 @@ moment.
 | `parallelo.copyUntrackedFiles` | `true` | Copy every file git does not track into each new worktree |
 | `parallelo.copyExclude` | `node_modules`, `dist`, caches… | Names skipped when copying, matched against every part of the path |
 | `parallelo.copyFiles` | `.env`, `.env.local` | Files always copied, even when excluded above |
+| `parallelo.sessionStatus` | `true` | Mark a session when its agent asks you something or finishes a turn |
 | `parallelo.showStatusBar` | `true` | Show the active session's branch in the status bar |
 | `parallelo.showMainCheckout` | `true` | List a terminal in the main checkout, not only worktree sessions |
 | `parallelo.openWorktreeTerminals` | `true` | Open a terminal in every worktree when the window starts |

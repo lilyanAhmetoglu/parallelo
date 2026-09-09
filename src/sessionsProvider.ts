@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { changeCount, isListed, type Session, type SessionTracker } from './sessionTracker';
 import type { SessionStyles } from './sessionStyles';
 import { sessionUri, type ConflictRadar } from './conflictRadar';
+import type { Mark, SessionStatus } from './sessionStatus';
 
 /**
  * A heading in the Sessions list.
@@ -25,6 +26,27 @@ function isSection(node: Node): node is SectionNode {
 /** The view's own drag type. Has to be the view id, lowercased. */
 const MIME = 'application/vnd.code.tree.worktreesessions.sessions';
 
+/**
+ * How a mark reads on a row.
+ *
+ * A question is a warning colour because it is blocking you; a finished turn is
+ * the added-file green, because something arrived. Neither is red: nothing has
+ * gone wrong, and red in this view already means a conflict.
+ */
+const MARK_ICON: Record<Mark, string> = {
+  waiting: 'circle-filled',
+  done: 'check'
+};
+const MARK_COLOR: Record<Mark, string> = {
+  waiting: 'gitDecoration.modifiedResourceForeground',
+  done: 'gitDecoration.addedResourceForeground'
+};
+const MARK_WORD: Record<Mark, string> = { waiting: 'waiting', done: 'done' };
+const MARK_TOOLTIP: Record<Mark, string> = {
+  waiting: 'This agent asked you something and has stopped until you answer.',
+  done: 'This agent finished its turn.'
+};
+
 export class SessionsProvider
   implements vscode.TreeDataProvider<Node>, vscode.TreeDragAndDropController<Node>
 {
@@ -40,12 +62,14 @@ export class SessionsProvider
   constructor(
     private readonly tracker: SessionTracker,
     private readonly styles: SessionStyles,
-    private readonly radar: ConflictRadar
+    private readonly radar: ConflictRadar,
+    private readonly status: SessionStatus
   ) {
     tracker.onDidChangeSessions(() => this.refresh());
     tracker.onDidChangeSession(() => this.refresh());
     styles.onDidChange(() => this.refresh());
     radar.onDidChange(() => this.refresh());
+    status.onDidChange(() => this.refresh());
   }
 
   refresh(): void {
@@ -162,6 +186,7 @@ export class SessionsProvider
       this.tracker.allSessions.filter(other => other.root === session.root).length > 1;
 
     const conflict = this.radar.describe(session);
+    const mark = this.status.get(session.root);
 
     // The conflict goes first, and short. The description is truncated from
     // the right, so a warning at the end is the first thing a narrow sidebar
@@ -170,16 +195,29 @@ export class SessionsProvider
     // which file, which is the part you cannot get from a badge.
     item.description = [
       conflict?.mark ?? '',
+      // Before the branch, because it is the part that is news, and the
+      // description is truncated from the right in a narrow sidebar.
+      mark ? MARK_WORD[mark] : '',
       branch,
       shared ? session.terminal.name : '',
       dirty ? `${dirty} changed` : ''
     ]
       .filter(Boolean)
       .join(' · ');
-    item.iconPath = new vscode.ThemeIcon(
-      style.icon || (active ? 'circle-filled' : 'terminal'),
-      style.color ? new vscode.ThemeColor(style.color) : undefined
-    );
+    // A session that wants you says so on its own icon.
+    //
+    // The icon rather than a badge beside it: VS Code has no way to put a mark
+    // over a tree row's icon, and the one badge a row has is the conflict
+    // warning, which is about a different question and must not be replaced by
+    // this one. So the mark takes the icon while it lasts and the session's own
+    // icon comes back the moment you look at the row -- which is the point, and
+    // is why the colour is not the session's either.
+    item.iconPath = mark
+      ? new vscode.ThemeIcon(MARK_ICON[mark], new vscode.ThemeColor(MARK_COLOR[mark]))
+      : new vscode.ThemeIcon(
+          style.icon || (active ? 'circle-filled' : 'terminal'),
+          style.color ? new vscode.ThemeColor(style.color) : undefined
+        );
     // What the conflict decoration hangs on. A scheme of our own, not the
     // worktree path: a real directory uri would pick up the git extension's
     // own decorations as well, and the session colour already lives on the
@@ -194,6 +232,7 @@ export class SessionsProvider
     }
     item.tooltip = [
       style.name,
+      mark ? MARK_TOOLTIP[mark] : '',
       session.cwd.fsPath,
       // Same rule as the row: say only what is true, so a branch that is level
       // with its upstream does not read "0 ahead, 0 behind".

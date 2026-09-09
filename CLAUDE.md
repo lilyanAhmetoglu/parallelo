@@ -221,7 +221,18 @@ resources/sessions.svg
 - `agentSessions.changes` — merge conflicts, staged, unstaged groups for the active session only. Click a file to open its diff.
 - `agentSessions.files` — file tree rooted at the active worktree. Collapsed by default.
 
-**Commands:** `newSession`, `newRoom`, `refresh`, `focusTerminal`, `openChange`, `stageAll`, `revealInScm`, `removeWorktree`.
+**Commands:** `newSession`, `newRoom`, `refresh`, `focusTerminal`, `openChange`, `stageAll`, `revealInScm`, `removeWorktree`, `setUpStatusHooks`.
+
+**A session's waiting/done mark comes from the agent, never from watching it.**
+An agent that asked a question and one that finished its turn are identical from
+outside the process -- both alive, both holding the terminal, both idle. That
+version was built and removed. The signal is `parallelo-status` in the
+repository's git directory, written by the agent's own notification hooks; a
+hook is a command the agent runs, so the contract stays agent-agnostic. The git
+directory, not the worktree: a file at the root would show up in `git status`,
+the Changes view and the conflict radar -- the extension making noise in the
+panel it exists to keep readable. Never rebuild this from `ps`, CPU or the
+process tree.
 
 `stageAll` and `revealInScm` are speculative. Cut them if they do not earn their place in real use.
 

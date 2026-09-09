@@ -108,7 +108,7 @@ reopened rather than switched to.
 Ranked by value to someone running several agents at once and not wanting to
 think about git.
 
-### 4.1 Busy / waiting indicator — **ATTEMPTED, DROPPED 2026-08-18**
+### 4.1 Busy / waiting indicator — **SHIPPED 2026-09-09**, on a different signal
 
 Built and removed. Do not rebuild it without a new signal.
 
@@ -121,6 +121,19 @@ is that this is not the question worth answering.
 indistinguishable from outside the process.** Both sit alive, holding the
 terminal foreground, using almost no CPU. So the dot appeared on every idle
 agent and told you nothing you could act on.
+
+**What shipped instead: the agent says so itself.** A dot when it asked you
+something, a tick when it finished, from `parallelo-status` in the repository's
+git directory — written by the agent's own notification hooks
+(`Parallelo: Set Up Status Hooks` wires Claude Code's `Notification` and
+`Stop`). A hook is a command the agent runs, not a private file we read, so the
+contract stays agent-agnostic: anything that can run a command when it needs you
+drives the same file. The git directory keeps it out of `git status`, the
+Changes view and the radar. See `src/sessionStatus.ts` and `src/statusHooks.ts`.
+
+Everything below is why the *process-tree* version had to go, and is still true.
+Re-checked 2026-09-09 against `@types/vscode` 1.125: no terminal-bell event, no
+readable terminal buffer.
 
 Signals checked and ruled out on macOS:
 - `ps wchan` is empty; Linux exposes a wait channel that would separate
