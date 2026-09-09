@@ -23,7 +23,7 @@ import { StashGuard } from './stashGuard';
 import { ConflictRadar } from './conflictRadar';
 import { Seeded } from './seeded';
 import { SessionStatus } from './sessionStatus';
-import { setUpStatusHooks } from './statusHooks';
+import { offerStatusHooks, setUpStatusHooks } from './statusHooks';
 import { log, showLog, disposeLog } from './log';
 
 /**
@@ -143,6 +143,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const files = new FilesProvider(tracker);
   const radar = new ConflictRadar(tracker, styles, baselines, seeded);
   const sessionStatus = new SessionStatus();
+  // Said once, and only when there is an agent whose hooks could be wired.
+  void offerStatusHooks(context.globalState);
   const sessions = new SessionsProvider(tracker, styles, radar, sessionStatus);
   const stashGuard = new StashGuard(tracker);
 
@@ -333,8 +335,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ),
     // Looking at the session is the acknowledgement. A tick that stayed after
     // you had read it would be on every row by lunchtime and would stop meaning
-    // anything -- and there is no other moment that honestly says "seen".
-    tracker.onDidChangeSession(session => void sessionStatus.acknowledge(session?.root)),
+    // anything.
+    //
+    // The terminal event, not `onDidChangeSession`. That one also fires on
+    // every git state change in the active session's repository -- and an agent
+    // finishing a turn changes files, so the mark it just earned would be
+    // acknowledged in the same instant it appeared, by the very event that
+    // proves it did something.
+    vscode.window.onDidChangeActiveTerminal(terminal => {
+      const session = terminal && tracker.sessionFor(terminal);
+      void sessionStatus.acknowledge(session?.root);
+    }),
     styles.onDidChange(() => paint(tracker.activeSession)),
     vscode.workspace.onDidChangeConfiguration(event => {
       if (event.affectsConfiguration('parallelo.sessionStatus')) {
@@ -487,7 +498,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ),
 
     vscode.commands.registerCommand('parallelo.focusTerminal', (session?: Session) => {
-      (session ?? tracker.activeSession)?.terminal.show(false);
+      const target = session ?? tracker.activeSession;
+      target?.terminal.show(false);
+      // Clicking the row is looking at it, and it is the only acknowledgement
+      // available when the terminal is already the active one -- showing a
+      // terminal that is already showing fires no event.
+      void sessionStatus.acknowledge(target?.root);
     }),
 
     vscode.commands.registerCommand('parallelo.pinSession', async (session?: Session) => {

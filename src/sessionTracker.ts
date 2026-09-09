@@ -175,6 +175,11 @@ export class SessionTracker implements vscode.Disposable {
     return [...this.sessions.values()];
   }
 
+  /** The session running in `terminal`, if it is in a worktree at all. */
+  sessionFor(terminal: vscode.Terminal): Session | undefined {
+    return this.sessions.get(terminal);
+  }
+
   private idFor(terminal: vscode.Terminal): string {
     let id = this.ids.get(terminal);
     if (!id) {
