@@ -118,11 +118,19 @@ and with a boundary drawn:
   opened -- never written into the worktree, never appended to the spec, which
   is for someone who was not in the room and has to find the decision fast.
 
-- **A room has exactly one output**: `SPEC-<room>.md` at the worktree root,
-  written by the lead. Everything else -- prompts, server config, transcript --
-  lives under `.roundtable/`, which ignores itself so the spec is the only thing
-  git ever shows. Never add a second output, and never make the user choose
-  which file was the real one.
+- **A room has exactly one output**: a spec, written by the lead, defaulting to
+  `SPEC-<room>.md` at the worktree root. Everything else -- prompts, server
+  config, transcript -- lives under `.roundtable/`, which ignores itself so the
+  spec is the only thing git ever shows. Never add a second output, and never
+  make the user choose which file was the real one.
+
+  **Where that one file goes is asked at creation** and settled in `room.json`
+  by `roundtable seed --spec`, which is where the briefs, `write_spec` and the
+  closing message all read it from. One place decides, or the lead is told to
+  write somewhere the server does not look. The path stays inside the worktree:
+  absolute paths and `..` fall back to the default, in the server rather than in
+  the dialog, because the dialog is not the only caller. Choosing a location is
+  not choosing between two outputs -- that rule stands.
 
 The rest of the non-goals stand. Rooms plan, they do not implement.
 
