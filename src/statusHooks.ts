@@ -77,14 +77,26 @@ export async function offerStatusHooks(memento: vscode.Memento): Promise<void> {
     return;
   }
 
-  await memento.update(OFFERED, true);
   const set = 'Set Them Up';
+  const never = 'Not Interested';
   const chosen = await vscode.window.showInformationMessage(
     'Sessions can show a dot when an agent asks you something and a tick when it finishes. ' +
       'It needs two hooks in your agent, which it has to write itself.',
-    set
+    set,
+    never
   );
+
+  // Only an answer counts. Marking this shown before the notification is
+  // answered means one that scrolled away unnoticed is never offered again --
+  // and the feature is inert until it is taken up, so that reads as broken.
+  // Notifications scrolling away is a mistake this project has already made
+  // once, in the rooms.
+  if (chosen === never) {
+    await memento.update(OFFERED, true);
+    return;
+  }
   if (chosen === set) {
+    await memento.update(OFFERED, true);
     await setUpStatusHooks();
   }
 }

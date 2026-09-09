@@ -72,6 +72,13 @@
   it differently.
 
 ### Changed
+- **A room installs dependencies too**, once, in the lead's terminal. It was
+  skipped on the grounds that a seat never runs the code it is planning — true
+  of the seats, and wrong about the worktree they leave behind, which someone
+  reads the code in afterwards. One terminal, not both: two package managers
+  writing one `node_modules` at the same time is not a slower install but a
+  broken one. `parallelo.setupCommand` now runs in the lead's terminal only, for
+  the same reason.
 - **A room's lead seat can run git.** `leadRoomArgs` on the agent entry gives
   that seat `Bash(git:*)` — it is the one that produces something, so it is the
   one that might commit the spec. The peer keeps `Bash` denied outright: two
