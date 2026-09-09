@@ -225,23 +225,97 @@ export async function copyIgnoredFiles(
 }
 
 /**
- * Lockfiles, most specific first, and the install each one implies.
+ * One language's dependency manager, and how to tell it is this project's.
  *
- * Ordered rather than a map because a repository can hold two: a `package-
- * lock.json` left behind after a move to pnpm is common, and the file the
- * project actually maintains is the one to believe. `packageManager` in
- * `package.json` outranks all of them -- it is the field that exists to answer
- * exactly this question.
+ * Ordered within an ecosystem because a repository can hold two markers: a
+ * `package-lock.json` left behind after a move to pnpm is common, and a
+ * `Cargo.lock` is more certain than a `Cargo.toml`. The first that exists wins,
+ * and the rest of that ecosystem is not asked about.
+ *
+ * Separate ecosystems are not exclusive. A repository with a Python service and
+ * a web front end needs both installs, and picking one would leave half the
+ * project unable to start.
  */
-const LOCKFILES: { file: string; install: string }[] = [
-  { file: 'bun.lock', install: 'bun install' },
-  { file: 'bun.lockb', install: 'bun install' },
-  { file: 'pnpm-lock.yaml', install: 'pnpm install' },
-  { file: 'yarn.lock', install: 'yarn install' },
-  { file: 'package-lock.json', install: 'npm install' },
-  { file: 'npm-shrinkwrap.json', install: 'npm install' }
+interface Ecosystem {
+  name: string;
+  /** Marker file, then the command its presence implies. */
+  markers: { file: string; install: string }[];
+}
+
+const ECOSYSTEMS: Ecosystem[] = [
+  {
+    name: 'node',
+    markers: [
+      { file: 'bun.lock', install: 'bun install' },
+      { file: 'bun.lockb', install: 'bun install' },
+      { file: 'pnpm-lock.yaml', install: 'pnpm install' },
+      { file: 'yarn.lock', install: 'yarn install' },
+      { file: 'package-lock.json', install: 'npm install' },
+      { file: 'npm-shrinkwrap.json', install: 'npm install' }
+    ]
+  },
+  {
+    name: 'deno',
+    markers: [{ file: 'deno.lock', install: 'deno install' }]
+  },
+  {
+    name: 'python',
+    markers: [
+      { file: 'uv.lock', install: 'uv sync' },
+      { file: 'poetry.lock', install: 'poetry install' },
+      { file: 'pdm.lock', install: 'pdm install' },
+      { file: 'Pipfile.lock', install: 'pipenv install' },
+      { file: 'requirements.txt', install: 'pip install -r requirements.txt' }
+    ]
+  },
+  {
+    name: 'rust',
+    markers: [
+      { file: 'Cargo.lock', install: 'cargo fetch' },
+      { file: 'Cargo.toml', install: 'cargo fetch' }
+    ]
+  },
+  {
+    name: 'go',
+    markers: [
+      { file: 'go.sum', install: 'go mod download' },
+      { file: 'go.mod', install: 'go mod download' }
+    ]
+  },
+  {
+    name: 'ruby',
+    markers: [
+      { file: 'Gemfile.lock', install: 'bundle install' },
+      { file: 'Gemfile', install: 'bundle install' }
+    ]
+  },
+  {
+    name: 'php',
+    markers: [
+      { file: 'composer.lock', install: 'composer install' },
+      { file: 'composer.json', install: 'composer install' }
+    ]
+  },
+  {
+    name: 'elixir',
+    markers: [{ file: 'mix.lock', install: 'mix deps.get' }]
+  },
+  {
+    name: 'swift',
+    markers: [{ file: 'Package.resolved', install: 'swift package resolve' }]
+  },
+  {
+    name: 'java',
+    markers: [
+      // The wrapper, never a bare `gradle` -- a project that ships one expects
+      // you to use it, and it is the only version anyone can be sure of.
+      { file: 'gradlew', install: './gradlew dependencies' },
+      { file: 'pom.xml', install: 'mvn dependency:go-offline' }
+    ]
+  }
 ];
 
+/** How `packageManager` in package.json names a manager, when it is set. */
 const INSTALL_BY_NAME: Record<string, string> = {
   bun: 'bun install',
   pnpm: 'pnpm install',
@@ -268,25 +342,21 @@ async function exists(file: string): Promise<boolean> {
 }
 
 /**
- * The install command a fresh worktree needs, or undefined when this is not a
- * node project.
+ * The node install, which is the one case a marker file cannot settle alone.
  *
- * A worktree checks out `package.json` and leaves `node_modules` behind --
- * it is ignored, and it is the one ignored thing too big to copy -- so an
- * agent's first command in a new session is an install it should not have had
- * to think about.
- *
- * Read from the base checkout, which is where the lockfile the project
- * maintains lives, and only ever *suggested*: it is typed into the terminal
- * like anything else, so a wrong guess is one visible line, not a hidden step.
+ * `packageManager: "pnpm@9.1.0"` is corepack's field and says outright which
+ * one the project uses, so it outranks every lockfile. Without it, and without
+ * a lockfile, nothing is run: `npm install` in a bun project writes a
+ * `package-lock.json` into the fresh worktree and builds a `node_modules` the
+ * project disagrees with, and a `package.json` kept only for tooling in a Go or
+ * Rust repo is the same story. Guessing wrong here is a change on disk, not a
+ * wasted line.
  */
-export async function detectInstallCommand(base: string): Promise<string | undefined> {
+async function nodeInstall(base: string): Promise<string | undefined> {
   const manifest = await readFile(path.join(base, 'package.json'));
   if (manifest === undefined) {
     return undefined;
   }
-
-  // `packageManager: "pnpm@9.1.0"` is corepack's field and says so outright.
   try {
     const declared = JSON.parse(manifest)?.packageManager;
     if (typeof declared === 'string') {
@@ -302,19 +372,78 @@ export async function detectInstallCommand(base: string): Promise<string | undef
     // An unparseable package.json is still a node project; fall through to the
     // lockfiles rather than giving up on the whole question.
   }
+  return undefined;
+}
 
-  for (const { file, install } of LOCKFILES) {
-    if (await exists(path.join(base, file))) {
-      return install;
+/**
+ * Dart and Flutter share a manifest and do not share a command.
+ *
+ * `flutter pub get` in a plain Dart package fails, and `dart pub get` in a
+ * Flutter app silently misses the platform dependencies. The manifest itself is
+ * what distinguishes them.
+ */
+async function dartInstall(base: string): Promise<string | undefined> {
+  const manifest = await readFile(path.join(base, 'pubspec.yaml'));
+  if (manifest === undefined) {
+    return undefined;
+  }
+  return /^\s*(sdk:\s*flutter|flutter:)/m.test(manifest) ? 'flutter pub get' : 'dart pub get';
+}
+
+/** .NET is found by a solution or project file, whatever it happens to be called. */
+async function dotnetInstall(base: string): Promise<string | undefined> {
+  try {
+    const listing = await vscode.workspace.fs.readDirectory(vscode.Uri.file(base));
+    const found = listing.some(([name]) => /\.(sln|csproj|fsproj|vbproj)$/i.test(name));
+    return found ? 'dotnet restore' : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * What a fresh worktree needs run in it before anything will work.
+ *
+ * A worktree checks out tracked files and nothing else, and every language
+ * keeps its dependencies out of the repository -- `node_modules`, `.venv`,
+ * `vendor`, `target`. So an agent's first command in a new session is an
+ * install it should not have had to think about, and which install it is
+ * depends on a language this extension has no business assuming.
+ *
+ * Read from the base checkout, where the lockfiles the project maintains live,
+ * and only ever *suggested*: it is typed into the terminal like anything else,
+ * so a wrong guess is one visible line you can stop, not a hidden step.
+ *
+ * More than one is joined with `&&`. A repository holding a Python service and
+ * a web front end needs both, and running only the first would leave half of it
+ * unable to start.
+ */
+export async function detectInstallCommand(base: string): Promise<string | undefined> {
+  const found: string[] = [];
+
+  const node = await nodeInstall(base);
+  if (node) {
+    found.push(node);
+  }
+
+  for (const ecosystem of ECOSYSTEMS) {
+    if (ecosystem.name === 'node' && node) {
+      continue;
+    }
+    for (const marker of ecosystem.markers) {
+      if (await exists(path.join(base, marker.file))) {
+        found.push(marker.install);
+        break;
+      }
     }
   }
 
-  // A manifest and no lockfile and no declared manager. Nothing here says
-  // which package manager this project uses, and the wrong guess is not a
-  // wasted line -- `npm install` in a bun project writes a `package-lock.json`
-  // into the new worktree and builds a `node_modules` the project disagrees
-  // with. A `package.json` that exists only for tooling, in a Go or Rust repo,
-  // is the same story. `setupCommand` is how someone says what to run when the
-  // repository does not.
-  return undefined;
+  for (const detect of [dartInstall, dotnetInstall]) {
+    const install = await detect(base);
+    if (install) {
+      found.push(install);
+    }
+  }
+
+  return found.length ? found.join(' && ') : undefined;
 }

@@ -340,14 +340,25 @@ first command failing. Parallelo closes both gaps when it makes the worktree:
   too. Files that are simply un-added are left behind — those are your work in
   progress, not the project's setup. Off with `parallelo.copyIgnoredFiles`;
   `parallelo.copyFiles` still names files to copy whatever else is decided.
-- **Dependencies are installed** with the command the base checkout implies —
-  `packageManager` in `package.json` first, then the lockfile (`bun.lock`,
-  `pnpm-lock.yaml`, `yarn.lock`, `package-lock.json`). It is typed into the
-  terminal like any other line, so you can see it and stop it. Nothing is run
-  when none of those say which package manager the project uses: guessing wrong
-  writes a lockfile the project does not want. Off with
-  `parallelo.installDependencies`, and skipped entirely when you have set
-  `parallelo.setupCommand` — that answers the same question yourself.
+- **Dependencies are installed** with the command the base checkout implies.
+  Every language keeps its dependencies out of the repository — `node_modules`,
+  `.venv`, `vendor`, `target` — so no worktree comes with them, whatever the
+  project is written in:
+
+  | | |
+  |---|---|
+  | JavaScript | `bun.lock` · `pnpm-lock.yaml` · `yarn.lock` · `package-lock.json`, or `packageManager` in `package.json`, which outranks them all |
+  | Python | `uv.lock` · `poetry.lock` · `pdm.lock` · `Pipfile.lock` · `requirements.txt` |
+  | Rust · Go | `Cargo.lock` · `go.mod` |
+  | Ruby · PHP · Elixir | `Gemfile` · `composer.json` · `mix.lock` |
+  | Swift · Java · .NET | `Package.resolved` · `gradlew` or `pom.xml` · any `.csproj` |
+  | Dart | `pubspec.yaml`, telling Flutter from plain Dart by what is in it |
+
+  A repository with two of these gets both, joined with `&&`. It is typed into
+  the terminal like any other line, so you can see it and stop it. Nothing runs
+  when nothing says which manager the project uses — guessing wrong writes a
+  lockfile the project does not want. Off with `parallelo.installDependencies`,
+  and skipped entirely when you have set `parallelo.setupCommand`.
 
 A new session therefore starts with a clean `git status`: everything copied is
 ignored, so the first thing in its diff is the first thing its agent did. The

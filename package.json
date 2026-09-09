@@ -628,13 +628,23 @@
             "build",
             "out",
             "target",
+            "vendor",
+            "_build",
+            "deps",
+            "Pods",
             ".next",
             ".nuxt",
             ".svelte-kit",
             ".turbo",
+            ".gradle",
+            ".dart_tool",
+            ".terraform",
             ".cache",
             ".parcel-cache",
             ".pytest_cache",
+            ".mypy_cache",
+            ".ruff_cache",
+            ".tox",
             "__pycache__",
             ".venv",
             "venv",
@@ -650,7 +660,7 @@
         "parallelo.installDependencies": {
           "type": "boolean",
           "default": true,
-          "description": "Run the install a new worktree needs before the agent starts, chosen from the base checkout's packageManager field or lockfile (bun, pnpm, yarn, npm). node_modules is ignored by git, so a worktree never comes with one. Not used when parallelo.setupCommand is set."
+          "description": "Run the install a new worktree needs before the agent starts, chosen from the base checkout's lockfiles. Every language keeps its dependencies out of the repository, so a worktree never comes with them. Understands bun, pnpm, yarn, npm, deno, uv, poetry, pdm, pipenv, pip, cargo, go, bundler, composer, mix, swift, gradle, maven, dart, flutter and dotnet; several at once in a polyglot repository. Not used when parallelo.setupCommand is set."
         },
         "parallelo.showStatusBar": {
           "type": "boolean",
