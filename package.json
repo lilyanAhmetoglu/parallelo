@@ -239,6 +239,11 @@
         "title": "Find in Changes",
         "category": "Parallelo Session",
         "icon": "$(search)"
+      },
+      {
+        "command": "parallelo.setUpStatusHooks",
+        "title": "Set Up Status Hooks",
+        "category": "Parallelo"
       }
     ],
     "menus": {
@@ -566,7 +571,7 @@
               },
               "roomArgs": {
                 "type": "string",
-                "markdownDescription": "Flags this agent needs in a brainstorming room, and nowhere else. `${roomDir}`, `${room}` and `${seat}` are substituted.\n\nTwo jobs. **Point the agent at the room** — its MCP config, so it can reach the other seat, and its brief through the system prompt, because typed input is eaten by an agent’s startup dialog and a seat that never read its brief looks exactly like one waiting properly. **Keep the room a planning room** — an agent holding a file tool will implement rather than plan, so allow reading and the room’s own tools and deny writing and the shell; the spec is produced through the server’s `write_spec` tool.\n\nClaude Code ships with a working value. An agent with no roomArgs cannot be seated, because a seat that cannot reach the server is a room that silently does nothing."
+                "markdownDescription": "Flags this agent needs in a brainstorming room, and nowhere else. `${roomDir}`, `${room}` and `${seat}` are substituted.\n\nTwo jobs. **Point the agent at the room** \u2014 its MCP config, so it can reach the other seat, and its brief through the system prompt, because typed input is eaten by an agent\u2019s startup dialog and a seat that never read its brief looks exactly like one waiting properly. **Keep the room a planning room** \u2014 an agent holding a file tool will implement rather than plan, so allow reading and the room\u2019s own tools and deny writing and the shell; the spec is produced through the server\u2019s `write_spec` tool.\n\nClaude Code ships with a working value. An agent with no roomArgs cannot be seated, because a seat that cannot reach the server is a room that silently does nothing."
               }
             }
           }
@@ -701,7 +706,12 @@
         "parallelo.roundtable.agentArgs": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Overrides every agent’s `roomArgs` in a brainstorming room. Leave empty — the default — and each agent uses its own, which is where these flags belong, since they are that agent’s syntax. Set this only to force one command line on both seats. `${roomDir}`, `${room}` and `${seat}` are substituted."
+          "markdownDescription": "Overrides every agent\u2019s `roomArgs` in a brainstorming room. Leave empty \u2014 the default \u2014 and each agent uses its own, which is where these flags belong, since they are that agent\u2019s syntax. Set this only to force one command line on both seats. `${roomDir}`, `${room}` and `${seat}` are substituted."
+        },
+        "parallelo.sessionStatus": {
+          "type": "boolean",
+          "default": true,
+          "description": "Mark a session when its agent asks you something or finishes a turn. The agent says so itself, through its own notification hooks -- run \"Parallelo: Set Up Status Hooks\" to wire them."
         }
       }
     }

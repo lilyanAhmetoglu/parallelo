@@ -3,6 +3,28 @@
 ## [Unreleased]
 
 ### Added
+- **A session says when it wants you.** A dot on the row when its agent asked
+  you something, a tick when it finished its turn, both clearing when you click
+  the row. `Parallelo: Set Up Status Hooks` wires it up.
+
+  The agent is the one that says which, because nothing outside it can tell.
+  This was built once from the process tree and removed: an agent waiting on a
+  question and an agent that finished are identical from outside — both alive,
+  both holding the terminal, both using no CPU — so the dot lit on every idle
+  agent. `ps wchan` is empty on macOS, `ps stat` reads `S+` for both, and there
+  is still no terminal-bell event in the API. So the signal is the agent's own
+  notification hook, which is a command it runs rather than a private file we
+  read: any agent that can run a command when it needs you can drive the same
+  file, and nothing here becomes Claude-only.
+
+  The file is `parallelo-status` in the repository's git directory — invisible
+  to `git status`, to the Changes view and to the conflict radar, and per
+  worktree for a linked checkout. A mark is tracked by when it was written, not
+  by what it says: a hook writes the same word every time, so an agent that
+  finishes twice in a row has to light the row twice. Anything already in the
+  file when a window opens counts as read, so a tick from yesterday is not
+  waiting for you this morning. Off with `parallelo.sessionStatus`.
+
 - **A room asks where its spec goes.** The prompt starts at `SPEC-<room>.md` at
   the worktree root, and `docs/specs/<room>.md` works as well — the directories
   are made when the spec is written. A room still has exactly one output; what

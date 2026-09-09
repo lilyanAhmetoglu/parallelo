@@ -22,6 +22,8 @@ import { Baselines } from './baselines';
 import { StashGuard } from './stashGuard';
 import { ConflictRadar } from './conflictRadar';
 import { Seeded } from './seeded';
+import { SessionStatus } from './sessionStatus';
+import { setUpStatusHooks } from './statusHooks';
 import { log, showLog, disposeLog } from './log';
 
 /**
@@ -140,7 +142,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const changes = new ChangesProvider(tracker, git, styles, baselines);
   const files = new FilesProvider(tracker);
   const radar = new ConflictRadar(tracker, styles, baselines, seeded);
-  const sessions = new SessionsProvider(tracker, styles, radar);
+  const sessionStatus = new SessionStatus();
+  const sessions = new SessionsProvider(tracker, styles, radar, sessionStatus);
   const stashGuard = new StashGuard(tracker);
 
   const changesView = vscode.window.createTreeView('worktreeSessions.changes', {
@@ -316,8 +319,33 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Dropping the cache here spawned a git process per worktree for clicking
     // between terminals.
     tracker.onDidChangeSessions(() => void stampBaselines()),
+    sessionStatus,
+    // Watch exactly the worktrees that have sessions in them, and no others.
+    tracker.onDidChangeSessions(
+      () =>
+        void sessionStatus.sync([
+          ...new Set(
+            tracker.allSessions
+              .map(session => session.root)
+              .filter((root): root is string => root !== undefined)
+          )
+        ])
+    ),
+    // Looking at the session is the acknowledgement. A tick that stayed after
+    // you had read it would be on every row by lunchtime and would stop meaning
+    // anything -- and there is no other moment that honestly says "seen".
+    tracker.onDidChangeSession(session => void sessionStatus.acknowledge(session?.root)),
     styles.onDidChange(() => paint(tracker.activeSession)),
     vscode.workspace.onDidChangeConfiguration(event => {
+      if (event.affectsConfiguration('parallelo.sessionStatus')) {
+        void sessionStatus.sync([
+          ...new Set(
+            tracker.allSessions
+              .map(session => session.root)
+              .filter((root): root is string => root !== undefined)
+          )
+        ]);
+      }
       if (event.affectsConfiguration('parallelo.autoSessionColors')) {
         void styles.syncAutoColors(tracker.allSessions);
       }
@@ -354,6 +382,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
 
     vscode.commands.registerCommand('parallelo.newRoom', () => newRoom(git, tracker, seeded)),
+    vscode.commands.registerCommand('parallelo.setUpStatusHooks', () => void setUpStatusHooks()),
     vscode.commands.registerCommand('parallelo.sendRoomBrief', () => sendKickoff()),
     vscode.commands.registerCommand('parallelo.showRoomTranscript', () => showTranscript(tracker)),
     vscode.commands.registerCommand('parallelo.newSession', () =>
