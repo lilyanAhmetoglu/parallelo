@@ -3,6 +3,16 @@
 ## [Unreleased]
 
 ### Added
+- **A room asks where its spec goes.** The prompt starts at `SPEC-<room>.md` at
+  the worktree root, and `docs/specs/<room>.md` works as well — the directories
+  are made when the spec is written. A room still has exactly one output; what
+  is chosen is where it lands, never which of two files was the real one.
+
+  The location is settled once, by `roundtable seed --spec`, in the `room.json`
+  the seat briefs and `write_spec` already read. Needs `roundtable-mcp` 0.2.0;
+  an older one writes the default and Parallelo says so rather than letting the
+  spec turn up somewhere unexpected.
+
 - **A new worktree comes ready to work in.** `git worktree add` checks out
   tracked files and nothing else, which is why a fresh session so often opened
   on a repository that could not reach its own database and had no

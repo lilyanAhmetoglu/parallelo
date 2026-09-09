@@ -230,8 +230,10 @@ Worth knowing before you run one:
 
 ## What a room leaves behind
 
-One file: **`SPEC-<room>.md`** at the root of the worktree. That is the room's
-output and the only thing you need to read — the decision in the first
+One file, and you say where it goes when you create the room — the prompt
+starts at **`SPEC-<room>.md`** in the root of the worktree, and
+`docs/specs/<room>.md` works just as well; the directories are made when the
+spec is written. That is the room's output and the only thing you need to read — the decision in the first
 paragraph, then the reasoning, the work broken into steps, and a **Dissent**
 section holding whatever the peer still disagrees with, in its own words.
 
@@ -242,6 +244,10 @@ in a room worktree shows the spec and nothing else.
 
 So the answer to "which file is the final one" is always the same: the one git
 is showing you.
+
+Choosing the location needs `roundtable-mcp` 0.2.0 or newer. An older one
+writes `SPEC-<room>.md` and Parallelo says so rather than letting the file turn
+up somewhere you did not expect.
 
 ## 💡 Things worth knowing
 

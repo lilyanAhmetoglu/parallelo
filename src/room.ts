@@ -117,6 +117,34 @@ export async function newRoom(
     return;
   }
 
+  // Where the room's one output goes. Asked rather than assumed, because a spec
+  // belongs wherever this repository keeps its plans, and that is not something
+  // the extension can know -- `docs/specs/` in one repo, the root in the next.
+  //
+  // Still exactly one output. The choice is where the file lands, never which
+  // of two files was the real one.
+  const specPath = await vscode.window.showInputBox({
+    title: 'Brainstorming room',
+    prompt: 'Where should the spec go? Relative to the worktree.',
+    value: `SPEC-${name}.md`,
+    // The directories are made when the spec is written, so a path into a
+    // folder that does not exist yet is fine and is the common case.
+    valueSelection: [0, `SPEC-${name}`.length],
+    validateInput: value => {
+      const wanted = value.trim();
+      if (!wanted) {
+        return 'A room writes one file. Name it.';
+      }
+      if (path.isAbsolute(wanted) || path.normalize(wanted).split(path.sep).includes('..')) {
+        return 'Keep it inside the worktree -- the spec is a plan about this repository.';
+      }
+      return undefined;
+    }
+  });
+  if (!specPath) {
+    return;
+  }
+
   const budget = config.get<number>('roundtable.budget', 8);
 
   // Claim the worktree before it exists, so the startup pass does not drop a
@@ -136,18 +164,32 @@ export async function newRoom(
   // Seeding writes the role prompts into the room, with the topic filled in, so
   // the terminals can point at a file instead of the extension keeping its own
   // copy of a prompt that belongs to the server.
-  let spec = `SPEC-${name}.md`;
+  const wantedSpec = specPath.trim();
+  let spec = wantedSpec;
   try {
     const { stdout } = await run(binary, [
       'seed',
       '--room', name,
       '--topic', topic,
       '--budget', String(budget),
-      '--cwd', cwd
+      '--cwd', cwd,
+      '--spec', wantedSpec
     ]);
+    // The server decides, and says so. It is the one that writes the file and
+    // the one that filled the path into each seat's brief, so its answer is
+    // the only one worth believing.
     const written = JSON.parse(stdout) as { spec?: string };
     if (written.spec) {
       spec = written.spec;
+    }
+    // A roundtable without `--spec` parses the flag, ignores it, and reports
+    // the default. Left unsaid, the spec quietly appears somewhere else and
+    // the room looks like it disobeyed.
+    if (spec !== wantedSpec) {
+      vscode.window.showWarningMessage(
+        `This roundtable does not take a spec location, so the room writes ${spec}. ` +
+          'Update it with: bun add -g roundtable-mcp'
+      );
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
