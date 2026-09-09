@@ -152,17 +152,25 @@ agent accepts anything, so a startup dialog cannot swallow them. Typed input
 can be lost; a system prompt cannot. If the opening line is eaten, type anything
 at all — the agent already knows which seat it is and what the room is for.
 
-**The seats are read-only, and that is enforced rather than asked for.** An agent
-holding a file-writing tool will eventually use it: give a lead `Write` and
-`Bash` and it will start implementing the thing it was asked to plan. So the
-seats get reading and the room's own tools, and nothing else — the spec is
-produced through the server's `write_spec` tool, so no seat needs write access
-to produce output. Their permissions are settled up front too, because the peer
-spends most of a room parked inside one tool call, and an agent stopped at a
-prompt is a conversation that never starts.
+**No seat can write a file, and that is enforced rather than asked for.** An
+agent holding a file-writing tool will eventually use it: give a lead `Write`
+and `Bash` and it will start implementing the thing it was asked to plan. So the
+seats get reading and the room's own tools — the spec is produced through the
+server's `write_spec`, so no seat needs write access to produce output. Their
+permissions are settled up front too, because the peer spends most of a room
+parked inside one tool call, and an agent stopped at a prompt is a conversation
+that never starts.
+
+**Git is the exception, and only the lead has it.** It is the seat that produces
+something, so it is the one that might commit the spec: it gets `Bash(git:*)`
+through `leadRoomArgs`, while the peer keeps `Bash` denied outright. Nothing
+there lets either seat write a file. Both seats share one checkout, so a `git
+checkout .` or `git reset --hard` from the lead discards what the peer is
+reading, and `git stash` is shared across every worktree in the repository.
 
 **None of that is yours to configure.** The flags live on the agent entry in
-`parallelo.agents` as `roomArgs`, and Claude Code ships with a working one. An
+`parallelo.agents` as `roomArgs` — plus `leadRoomArgs` where the lead needs more
+than the peer — and Claude Code ships with working ones. An
 agent with no `roomArgs` is refused a seat rather than opened, because a seat
 that cannot reach the server produces a terminal that sits there doing nothing
 and looks exactly like one that is thinking. To seat an agent Parallelo does not

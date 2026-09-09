@@ -519,7 +519,8 @@
                   "value": ""
                 }
               ],
-              "roomArgs": "--append-system-prompt-file ${roomDir}/${seat}.md --strict-mcp-config --mcp-config ${roomDir}/mcp.json --allowedTools \"Read,Glob,Grep,mcp__roundtable__post,mcp__roundtable__wait_for_message,mcp__roundtable__read_room,mcp__roundtable__room_status,mcp__roundtable__write_spec,mcp__roundtable__close_room\" --disallowedTools \"Write,Edit,MultiEdit,NotebookEdit,Bash,BashOutput,KillShell,Task,SlashCommand,WebFetch,WebSearch\""
+              "roomArgs": "--append-system-prompt-file ${roomDir}/${seat}.md --strict-mcp-config --mcp-config ${roomDir}/mcp.json --allowedTools \"Read,Glob,Grep,mcp__roundtable__post,mcp__roundtable__wait_for_message,mcp__roundtable__read_room,mcp__roundtable__room_status,mcp__roundtable__write_spec,mcp__roundtable__close_room\" --disallowedTools \"Write,Edit,MultiEdit,NotebookEdit,Bash,BashOutput,KillShell,Task,SlashCommand,WebFetch,WebSearch\"",
+              "leadRoomArgs": "--append-system-prompt-file ${roomDir}/${seat}.md --strict-mcp-config --mcp-config ${roomDir}/mcp.json --allowedTools \"Read,Glob,Grep,Bash(git:*),mcp__roundtable__post,mcp__roundtable__wait_for_message,mcp__roundtable__read_room,mcp__roundtable__room_status,mcp__roundtable__write_spec,mcp__roundtable__close_room\" --disallowedTools \"Write,Edit,MultiEdit,NotebookEdit,Task,SlashCommand,WebFetch,WebSearch\""
             },
             {
               "label": "Codex",
@@ -577,6 +578,10 @@
               "roomArgs": {
                 "type": "string",
                 "markdownDescription": "Flags this agent needs in a brainstorming room, and nowhere else. `${roomDir}`, `${room}` and `${seat}` are substituted.\n\nTwo jobs. **Point the agent at the room** \u2014 its MCP config, so it can reach the other seat, and its brief through the system prompt, because typed input is eaten by an agent\u2019s startup dialog and a seat that never read its brief looks exactly like one waiting properly. **Keep the room a planning room** \u2014 an agent holding a file tool will implement rather than plan, so allow reading and the room\u2019s own tools and deny writing and the shell; the spec is produced through the server\u2019s `write_spec` tool.\n\nClaude Code ships with a working value. An agent with no roomArgs cannot be seated, because a seat that cannot reach the server is a room that silently does nothing."
+              },
+              "leadRoomArgs": {
+                "type": "string",
+                "description": "Room flags for the lead seat only. Falls back to roomArgs. The lead is the seat that produces something, so it is the one given git."
               }
             }
           }

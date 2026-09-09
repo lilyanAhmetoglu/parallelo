@@ -31,6 +31,8 @@ interface Seated {
   command: string;
   /** The agent's own room flags, used unless the setting overrides them. */
   roomArgs: string;
+  /** What the lead seat uses instead, when this agent gives the lead more. */
+  leadRoomArgs: string;
 }
 
 /**
@@ -440,13 +442,15 @@ async function pickSeat(
   if (models.length < 2) {
     const only = models[0];
     const flags = agent.roomArgs ?? '';
+    const leadFlags = agent.leadRoomArgs ?? '';
     return only?.value
       ? {
           label: `${agent.label} · ${only.label}`,
           command: `${command} ${flag(agent)} ${only.value}`,
-          roomArgs: flags
+          roomArgs: flags,
+          leadRoomArgs: leadFlags
         }
-      : { label: agent.label, command, roomArgs: flags };
+      : { label: agent.label, command, roomArgs: flags, leadRoomArgs: leadFlags };
   }
 
   const model = await vscode.window.showQuickPick(
@@ -458,13 +462,15 @@ async function pickSeat(
   }
   const value = model.model.value;
   const flags = agent.roomArgs ?? '';
+  const leadFlags = agent.leadRoomArgs ?? '';
   return value
     ? {
         label: `${agent.label} · ${model.model.label}`,
         command: `${command} ${flag(agent)} ${value}`,
-        roomArgs: flags
+        roomArgs: flags,
+        leadRoomArgs: leadFlags
       }
-    : { label: agent.label, command, roomArgs: flags };
+    : { label: agent.label, command, roomArgs: flags, leadRoomArgs: leadFlags };
 }
 
 function flag(agent: AgentChoice): string {
@@ -534,7 +540,10 @@ function roomArgs(
   seat: Seat
 ): string {
   const override = config.get<string>('roundtable.agentArgs', '').trim();
-  return (override || agent.roomArgs)
+  // The lead's own list when it has one. Only the lead: the peer's tools are
+  // deliberately narrower, and a seat that can act is a seat that will.
+  const own = seat === 'lead' && agent.leadRoomArgs.trim() ? agent.leadRoomArgs : agent.roomArgs;
+  return (override || own)
     .replaceAll('${roomDir}', roomDir)
     .replaceAll('${room}', room)
     .replaceAll('${seat}', seat)

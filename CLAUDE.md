@@ -61,12 +61,26 @@ and with a boundary drawn:
   rooms died this way before the cause was found. `--append-system-prompt-file`
   with a `${seat}` placeholder is the delivery mechanism; the typed line only
   starts the turn.
-- **The seats are read-only, and that is enforced, not requested.** An agent
-  holding a file tool will implement rather than plan -- a Haiku lead given
-  `Write` and `Bash` wrote the whole feature and never opened the room. So the
-  room's tools are the only way to produce anything: `write_spec` lives on the
-  server and `close_room` refuses until it has been called. Never solve this
+- **The seats cannot write files, and that is enforced, not requested.** An
+  agent holding a file tool will implement rather than plan -- a Haiku lead
+  given `Write` and `Bash` wrote the whole feature and never opened the room. So
+  the room's tools are the only way to produce anything: `write_spec` lives on
+  the server and `close_room` refuses until it has been called. Never solve this
   with prompt wording alone; wording is what failed.
+
+  **Git is the one exception, and only for the lead.** `leadRoomArgs` gives that
+  seat `Bash(git:*)` -- it is the seat that produces something and so the one
+  that might commit it -- while the peer keeps `Bash` on its deny list
+  entirely. Two lists rather than one, because the deny half has to differ:
+  a peer with `Bash` merely unlisted stops at an approval prompt in a terminal
+  nobody is watching, which is the same failure as plan mode. Nothing gained
+  here lets a seat write a file; `Write`, `Edit`, `MultiEdit`, `NotebookEdit`,
+  `Task` and `SlashCommand` stay denied in both.
+
+  Both seats share one checkout, so `git checkout .` or `git reset --hard` from
+  the lead discards what the peer is reading, and `git stash` is shared across
+  every worktree in the repository. Asked for deliberately, 2026-09-09, with
+  those consequences named.
 - **Scrub the parent agent's session markers from a seat's environment.** A
   terminal inherits the editor's environment and the editor inherits whatever
   launched it, so opening VS Code from a shell inside an agent makes every seat
@@ -80,8 +94,9 @@ and with a boundary drawn:
   cannot speak and the peer waits forever. Same room, same flags, budget 1:
   plan mode reached 0 tool calls in ten minutes; without it, 9 calls, both
   seats, spec written, room closed. What plan mode is wanted for is already
-  guaranteed more strictly -- the seats hold no `Write`, `Edit`, `NotebookEdit`
-  or `Bash` at all, so implementing is impossible rather than merely gated.
+  guaranteed more strictly -- no seat holds `Write`, `Edit`, `NotebookEdit`, and
+  the peer holds no `Bash` at all, so implementing is impossible rather than
+  merely gated.
 - **Brief a seat when the server says it connected, never on a timer or a
   button.** An agent registers with the room as soon as it has finished
   starting, and that is the only honest readiness signal available. It was a
