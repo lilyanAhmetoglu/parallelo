@@ -607,15 +607,10 @@
             ".env",
             ".env.local"
           ],
-          "description": "Files always copied from the base checkout into a new worktree, named one by one. Copied even when parallelo.copyUntrackedFiles is off, or when parallelo.copyExclude would skip them.",
+          "description": "Files always copied from the base checkout into a new worktree, named one by one. Copied even when parallelo.copyIgnoredFiles is off, when parallelo.copyExclude would skip them, or when git is not ignoring them at all.",
           "items": {
             "type": "string"
           }
-        },
-        "parallelo.copyUntrackedFiles": {
-          "type": "boolean",
-          "default": true,
-          "description": "Copy every file git does not track \u2014 ignored files such as .env, and files never added \u2014 from the base checkout into a new worktree. Directories listed in parallelo.copyExclude are skipped."
         },
         "parallelo.copyExclude": {
           "type": "array",
@@ -642,7 +637,7 @@
             ".DS_Store",
             "*.log"
           ],
-          "description": "Names skipped when copying untracked files into a new worktree, matched against each part of the path so build output nested in a monorepo is skipped too. Dependencies and build output are installed or rebuilt, not carried. Supports * and ?.",
+          "description": "Names skipped when copying ignored files into a new worktree, matched against each part of the path so build output nested in a monorepo is skipped too. Dependencies and build output are installed or rebuilt, not carried. Supports * and ?.",
           "items": {
             "type": "string"
           }
@@ -717,6 +712,11 @@
           "type": "boolean",
           "default": true,
           "description": "Mark a session when its agent asks you something or finishes a turn. The agent says so itself, through its own notification hooks -- run \"Parallelo: Set Up Status Hooks\" to wire them."
+        },
+        "parallelo.copyIgnoredFiles": {
+          "type": "boolean",
+          "default": true,
+          "description": "Copy the files .gitignore covers -- .env and the like -- from the base checkout into a new worktree. A worktree checks out tracked files only, so it never comes with them. Directories listed in parallelo.copyExclude are skipped."
         }
       }
     }
