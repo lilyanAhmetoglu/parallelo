@@ -72,6 +72,17 @@
   it differently.
 
 ### Changed
+- **A room's lead seat can run git.** `leadRoomArgs` on the agent entry gives
+  that seat `Bash(git:*)` — it is the one that produces something, so it is the
+  one that might commit the spec. The peer keeps `Bash` denied outright: two
+  lists rather than one, because a peer with `Bash` merely unlisted would stop
+  at an approval prompt in a terminal nobody is watching. Neither seat can write
+  a file; `Write`, `Edit`, `MultiEdit`, `NotebookEdit`, `Task` and
+  `SlashCommand` stay denied in both.
+
+  Both seats share one checkout, so `git checkout .` or `git reset --hard` from
+  the lead discards what the peer is reading, and `git stash` is shared across
+  every worktree in the repository.
 - `parallelo.copyFiles` is now the list of files copied *whatever else is
   decided* — with the broad copy off, or when an exclude would have skipped
   them. Its default is unchanged.

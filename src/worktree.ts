@@ -28,6 +28,19 @@ export interface AgentChoice {
    * and looks exactly like one that is thinking.
    */
   roomArgs?: string;
+  /**
+   * Room flags for the lead seat only, when it needs more than the peer does.
+   *
+   * The lead is the one that produces something -- it writes the spec and it is
+   * the seat that might commit it -- so it is the only one given git. The peer
+   * argues and nothing else. Two lists rather than one with a placeholder in
+   * it, because the deny half has to differ too: a peer with `Bash` merely
+   * unlisted would stop at an approval prompt in a terminal nobody is watching,
+   * which is the failure that made plan mode unusable.
+   *
+   * Falls back to `roomArgs` when unset.
+   */
+  leadRoomArgs?: string;
 }
 
 /** git's own wording, without the command line execFile prepends to it. */
