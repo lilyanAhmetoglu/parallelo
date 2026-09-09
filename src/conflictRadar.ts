@@ -5,6 +5,7 @@ import { Status } from './status';
 import { isListed, type Session, type SessionTracker } from './sessionTracker';
 import type { SessionStyles } from './sessionStyles';
 import type { Baselines } from './baselines';
+import type { Seeded } from './seeded';
 import { commonDirFor } from './gitCommonDir';
 import { log } from './log';
 
@@ -47,8 +48,15 @@ export function sessionUri(root: string): vscode.Uri {
  * Merge changes matter most of all: a session sitting on a conflicted
  * `auth.ts` is the one you least want a second agent walking into, and those
  * files are in neither of the other two groups.
+ *
+ * What the worktree was *created* holding does not count. Parallelo copies the
+ * base checkout's untracked files into every new worktree, and the ones git is
+ * not ignoring land there as untracked files -- so without this, two sessions
+ * branched from the same checkout warn about each other over a `notes.md`
+ * neither agent has opened. Only while the path is still untracked: staging it
+ * makes it that session's work by any reading.
  */
-function editedFiles(repository: Repository): Set<string> {
+function editedFiles(repository: Repository, seeded: Set<string>): Set<string> {
   const root = repository.rootUri.fsPath;
   const files = new Set<string>();
   for (const change of [
@@ -64,7 +72,11 @@ function editedFiles(repository: Repository): Set<string> {
     // baseline's paths come straight from git. `path.relative` does not, so
     // without this the same file arrives twice under two spellings and one
     // shared file reads as two conflicts.
-    files.add(path.relative(root, change.uri.fsPath).split(path.sep).join('/'));
+    const file = path.relative(root, change.uri.fsPath).split(path.sep).join('/');
+    if (change.status === Status.UNTRACKED && seeded.has(file)) {
+      continue;
+    }
+    files.add(file);
   }
   return files;
 }
@@ -115,7 +127,8 @@ export class ConflictRadar implements vscode.Disposable, vscode.FileDecorationPr
   constructor(
     private readonly tracker: SessionTracker,
     private readonly styles: SessionStyles,
-    private readonly baselines: Baselines
+    private readonly baselines: Baselines,
+    private readonly seeded: Seeded
   ) {
     this.disposables.push(
       // Fires on terminal changes and on any git state change in a tracked
@@ -311,7 +324,10 @@ export class ConflictRadar implements vscode.Disposable, vscode.FileDecorationPr
     repository: Repository;
     session: Session;
   }): Promise<Set<string>> {
-    const files = editedFiles(entry.repository);
+    const files = editedFiles(
+      entry.repository,
+      this.seeded.get(entry.repository.rootUri.fsPath)
+    );
 
     // Linked worktrees only. The main checkout is where `git pull` happens,
     // and every commit a pull brings in is a commit made here since this

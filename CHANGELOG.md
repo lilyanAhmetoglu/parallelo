@@ -1,5 +1,45 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **A new worktree comes ready to work in.** `git worktree add` checks out
+  tracked files and nothing else, which is why a fresh session so often opened
+  on a repository that could not reach its own database and had no
+  `node_modules` to run with. Starting a worktree session now fixes both before
+  the agent starts.
+
+  Every file git does not track is copied from the base checkout — ignored files
+  such as `.env` and `.claude/settings.local.json`, and files never added.
+  `parallelo.copyExclude` skips what is installed or rebuilt rather than carried:
+  `node_modules`, `dist`, `.next`, `target`, `.venv`, caches. Names match against
+  every part of the path, so build output nested in a monorepo is skipped as
+  well, and `.worktrees` is never copied into a worktree. Off with
+  `parallelo.copyUntrackedFiles`.
+
+  Dependencies are then installed with the command the base checkout implies:
+  `packageManager` in `package.json` first, then the lockfile — `bun.lock`,
+  `pnpm-lock.yaml`, `yarn.lock`, `package-lock.json`. It is typed into the
+  terminal like any other line rather than run out of sight. When none of those
+  identify a package manager, nothing is run: `npm install` in a bun project
+  writes a `package-lock.json` into the fresh worktree and builds a
+  `node_modules` the project disagrees with, and a `package.json` kept only for
+  tooling in a Go or Rust repo is the same story. Off with
+  `parallelo.installDependencies`, and not used at all when
+  `parallelo.setupCommand` is set, since that answers the same question by hand.
+
+  Copying is cancellable — an ignored directory can be any size — and symlinks
+  pointing at directories are skipped rather than followed out of the
+  repository. The conflict radar is told what each worktree was created
+  holding and subtracts it, so two sessions branched from the same checkout do
+  not warn about each other over an untracked file neither agent has opened.
+  Staging one makes it that session's work again.
+
+### Changed
+- `parallelo.copyFiles` is now the list of files copied *whatever else is
+  decided* — with the broad copy off, or when an exclude would have skipped
+  them. Its default is unchanged.
+
 ## [1.1.0] - 2026-09-08
 
 ### Added

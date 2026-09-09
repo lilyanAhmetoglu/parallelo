@@ -589,7 +589,7 @@
         "parallelo.setupCommand": {
           "type": "string",
           "default": "",
-          "description": "Command run once in a new worktree before the agent starts. Useful in a monorepo, for example: bun install."
+          "description": "Command run once in a new worktree before the agent starts, instead of the install parallelo.installDependencies would have chosen. Useful in a monorepo, for example: bun install --filter web."
         },
         "parallelo.copyFiles": {
           "type": "array",
@@ -597,10 +597,50 @@
             ".env",
             ".env.local"
           ],
-          "description": "Untracked files copied from the main checkout into each new worktree.",
+          "description": "Files always copied from the base checkout into a new worktree, named one by one. Copied even when parallelo.copyUntrackedFiles is off, or when parallelo.copyExclude would skip them.",
           "items": {
             "type": "string"
           }
+        },
+        "parallelo.copyUntrackedFiles": {
+          "type": "boolean",
+          "default": true,
+          "description": "Copy every file git does not track \u2014 ignored files such as .env, and files never added \u2014 from the base checkout into a new worktree. Directories listed in parallelo.copyExclude are skipped."
+        },
+        "parallelo.copyExclude": {
+          "type": "array",
+          "default": [
+            "node_modules",
+            ".git",
+            ".worktrees",
+            ".roundtable",
+            "dist",
+            "build",
+            "out",
+            "target",
+            ".next",
+            ".nuxt",
+            ".svelte-kit",
+            ".turbo",
+            ".cache",
+            ".parcel-cache",
+            ".pytest_cache",
+            "__pycache__",
+            ".venv",
+            "venv",
+            "coverage",
+            ".DS_Store",
+            "*.log"
+          ],
+          "description": "Names skipped when copying untracked files into a new worktree, matched against each part of the path so build output nested in a monorepo is skipped too. Dependencies and build output are installed or rebuilt, not carried. Supports * and ?.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "parallelo.installDependencies": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run the install a new worktree needs before the agent starts, chosen from the base checkout's packageManager field or lockfile (bun, pnpm, yarn, npm). node_modules is ignored by git, so a worktree never comes with one. Not used when parallelo.setupCommand is set."
         },
         "parallelo.showStatusBar": {
           "type": "boolean",

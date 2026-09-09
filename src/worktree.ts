@@ -5,6 +5,9 @@ import { promisify } from 'util';
 import type { API as GitAPI } from './git';
 import { isLinkedWorktree, type SessionTracker } from './sessionTracker';
 import { canonical } from './worktreeTerminals';
+import { copyUntrackedFiles, detectInstallCommand } from './worktreeSeed';
+import type { Seeded } from './seeded';
+import { log } from './log';
 
 const run = promisify(execFile);
 
@@ -334,7 +337,8 @@ export async function resolveBase(
 
 export async function newSession(
   gitApi: GitAPI,
-  tracker: SessionTracker
+  tracker: SessionTracker,
+  seeded?: Seeded
 ): Promise<void> {
   const located = await resolveBase(gitApi, tracker);
   if (!located) {
@@ -472,8 +476,15 @@ export async function newSession(
     return;
   }
 
-  const worktreePath = await createWorktree(gitApi, base, name, config);
-  launch(worktreePath, name, command, config, true);
+  const worktreePath = await createWorktree(gitApi, base, name, config, seeded);
+  // Read from the base checkout, which is the one with the lockfile. Asking the
+  // new worktree would work too, but only because the same file was just
+  // checked out into it -- and not at all in the monorepo case where the
+  // session is opened deeper than the lockfile lives.
+  const install = config.get<boolean>('installDependencies', true)
+    ? await detectInstallCommand(base)
+    : undefined;
+  launch(worktreePath, name, command, config, true, install);
   await tracker.sync();
 }
 
@@ -486,7 +497,8 @@ export async function createWorktree(
   gitApi: GitAPI,
   base: string,
   name: string,
-  config: vscode.WorkspaceConfiguration
+  config: vscode.WorkspaceConfiguration,
+  seeded?: Seeded
 ): Promise<string> {
   const dir = config.get<string>('worktreePath', '.worktrees');
   const prefix = config.get<string>('branchPrefix', 'session/');
@@ -496,8 +508,15 @@ export async function createWorktree(
   const branch = `${prefix}${name}`;
 
   await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: `Creating worktree ${name}` },
-    async progress => {
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: `Creating worktree ${name}`,
+      // Copying untracked files is the step with no known size -- an ignored
+      // `vendor` or a directory of fixtures can be anything -- so there has to
+      // be a way out that is not force-quitting the window.
+      cancellable: true
+    },
+    async (progress, token) => {
       try {
         const branches = await git(base, ['branch', '--list', branch]);
         const args = branches
@@ -511,14 +530,46 @@ export async function createWorktree(
       }
 
       // Untracked config never comes along with a worktree, so copy it over.
+      // The named list first and unconditionally: it is how someone says "this
+      // one, whatever else you decide", and it still works with the broad copy
+      // turned off or the file sitting inside an excluded directory.
       for (const file of config.get<string[]>('copyFiles', [])) {
-        const from = vscode.Uri.file(path.join(base, file));
-        const to = vscode.Uri.file(path.join(worktreePath, file));
+        const target = path.resolve(worktreePath, file);
+        // A `..` in the setting would otherwise create directories outside the
+        // worktree as a side effect of starting a session. Before there was a
+        // `createDirectory` here the copy simply failed; now it has to be said.
+        const relative = path.relative(worktreePath, target);
+        if (relative.startsWith('..') || path.isAbsolute(relative)) {
+          log(`seed: copyFiles entry leaves the worktree, skipped: ${file}`);
+          continue;
+        }
         try {
-          await vscode.workspace.fs.copy(from, to, { overwrite: false });
+          await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.dirname(target)));
+          await vscode.workspace.fs.copy(
+            vscode.Uri.file(path.join(base, file)),
+            vscode.Uri.file(target),
+            { overwrite: false }
+          );
         } catch {
           // Missing source or existing target is fine.
         }
+      }
+
+      // Then everything else git does not track. A named list only covers the
+      // files someone thought to name, and the one that stops the session
+      // working is always the one they did not.
+      if (config.get<boolean>('copyUntrackedFiles', true)) {
+        progress.report({ message: 'Copying local files' });
+        const copied = await copyUntrackedFiles(base, worktreePath, config, token, log);
+        log(
+          `seed: copied ${copied.length} untracked ` +
+            `${copied.length === 1 ? 'file' : 'files'} into ${name}`
+        );
+        // What was copied is not what this session edited. Untracked files that
+        // git is not ignoring arrive in the worktree as untracked files, which
+        // is exactly what the conflict radar counts -- so it is told, and
+        // subtracts them until an agent stages one.
+        await seeded?.record(worktreePath, copied);
       }
 
       progress.report({ message: 'Registering with source control' });
@@ -534,7 +585,8 @@ function launch(
   name: string,
   command: string | undefined,
   config: vscode.WorkspaceConfiguration,
-  fresh: boolean
+  fresh: boolean,
+  install?: string
 ): void {
   const terminal = vscode.window.createTerminal({
     name,
@@ -546,7 +598,11 @@ function launch(
   // Only in a worktree we just made. The setting is "run once in a new
   // worktree"; re-running `bun install` in the checkout somebody is already
   // working in is not what they asked for.
-  const setup = fresh ? config.get<string>('setupCommand', '').trim() : '';
+  //
+  // `setupCommand` wins when it is set. Someone who wrote out the command to
+  // run here has already answered the question the lockfile is being read to
+  // guess at, and running both would install twice.
+  const setup = fresh ? config.get<string>('setupCommand', '').trim() || install || '' : '';
   if (setup) {
     terminal.sendText(setup);
   }
