@@ -21,6 +21,7 @@ import { SessionStyles, COLORS, ICONS } from './sessionStyles';
 import { Baselines } from './baselines';
 import { StashGuard } from './stashGuard';
 import { ConflictRadar } from './conflictRadar';
+import { Seeded } from './seeded';
 import { log, showLog, disposeLog } from './log';
 
 /**
@@ -135,9 +136,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const tracker = new SessionTracker(git);
   const styles = new SessionStyles(context.globalState);
   const baselines = new Baselines(context.globalState);
+  const seeded = new Seeded(context.globalState);
   const changes = new ChangesProvider(tracker, git, styles, baselines);
   const files = new FilesProvider(tracker);
-  const radar = new ConflictRadar(tracker, styles, baselines);
+  const radar = new ConflictRadar(tracker, styles, baselines, seeded);
   const sessions = new SessionsProvider(tracker, styles, radar);
   const stashGuard = new StashGuard(tracker);
 
@@ -351,11 +353,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       sessions.refresh();
     }),
 
-    vscode.commands.registerCommand('parallelo.newRoom', () => newRoom(git, tracker)),
+    vscode.commands.registerCommand('parallelo.newRoom', () => newRoom(git, tracker, seeded)),
     vscode.commands.registerCommand('parallelo.sendRoomBrief', () => sendKickoff()),
     vscode.commands.registerCommand('parallelo.showRoomTranscript', () => showTranscript(tracker)),
     vscode.commands.registerCommand('parallelo.newSession', () =>
-      newSession(git, tracker)
+      newSession(git, tracker, seeded)
     ),
 
     vscode.commands.registerCommand('parallelo.resetBaseline', async () => {

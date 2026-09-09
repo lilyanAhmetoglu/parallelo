@@ -6,6 +6,7 @@ import { promisify } from 'util';
 import type { API as GitAPI } from './git';
 import type { SessionTracker } from './sessionTracker';
 import { createWorktree, resolveBase, type AgentChoice } from './worktree';
+import type { Seeded } from './seeded';
 import { release, reserve } from './worktreeTerminals';
 import { log } from './log';
 
@@ -46,7 +47,11 @@ interface Seated {
  * arguing about it; two worktrees would give them two different repositories to
  * disagree about, and two transcripts that never meet.
  */
-export async function newRoom(gitApi: GitAPI, tracker: SessionTracker): Promise<void> {
+export async function newRoom(
+  gitApi: GitAPI,
+  tracker: SessionTracker,
+  seeded?: Seeded
+): Promise<void> {
   const config = vscode.workspace.getConfiguration('parallelo');
   const binary = config.get<string>('roundtable.command', 'roundtable').trim() || 'roundtable';
 
@@ -121,7 +126,7 @@ export async function newRoom(gitApi: GitAPI, tracker: SessionTracker): Promise<
 
   let cwd: string;
   try {
-    cwd = await createWorktree(gitApi, base, name, config);
+    cwd = await createWorktree(gitApi, base, name, config, seeded);
   } catch {
     // createWorktree has already said what went wrong.
     await release(path.isAbsolute(dir) ? path.join(dir, name) : path.join(base, dir, name));
@@ -140,9 +145,9 @@ export async function newRoom(gitApi: GitAPI, tracker: SessionTracker): Promise<
       '--budget', String(budget),
       '--cwd', cwd
     ]);
-    const seeded = JSON.parse(stdout) as { spec?: string };
-    if (seeded.spec) {
-      spec = seeded.spec;
+    const written = JSON.parse(stdout) as { spec?: string };
+    if (written.spec) {
+      spec = written.spec;
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -436,6 +441,10 @@ function open(
   });
   terminal.show();
 
+  // Only what the user wrote. The install `installDependencies` picks for a
+  // normal session is deliberately not run here: both seats share one checkout,
+  // so it would run twice over the same `node_modules`, and a seat holds no
+  // Bash tool and never runs the code it is planning.
   const setup = config.get<string>('setupCommand', '').trim();
   if (setup) {
     terminal.sendText(setup);
