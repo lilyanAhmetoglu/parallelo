@@ -20,6 +20,17 @@ interface SeatTerminal {
   seat: Seat;
   terminal: vscode.Terminal;
   kickoff: string;
+  /**
+   * True when the agent was handed its brief as an opening prompt rather than
+   * as a system prompt -- Copilot's `-i`, Codex's positional argument.
+   *
+   * Such a seat is already mid-turn by the time it registers with the server,
+   * so the kickoff has nothing left to start: typed then, it is either eaten by
+   * a TUI that is busy or queued as a second turn against the round budget.
+   * Claude Code is the other shape -- its brief is in `--append-system-prompt-file`
+   * and it sits at its input box until something starts it.
+   */
+  briefed: boolean;
 }
 
 /** The most recent room, held so its brief can be sent once the seats are ready. */
@@ -35,6 +46,11 @@ interface Seated {
   roomArgs: string;
   /** What the lead seat uses instead, when this agent gives the lead more. */
   leadRoomArgs: string;
+  /**
+   * The agent takes its brief as an opening prompt, not as a system prompt.
+   * See `SeatTerminal.briefed` for why that changes when it may be typed at.
+   */
+  briefIsPrompt: boolean;
 }
 
 /**
@@ -287,6 +303,30 @@ export async function newRoom(
           'Update it with: bun add -g roundtable-mcp'
       );
     }
+
+    // The briefs have to exist on disk before a seat is opened, because some
+    // agents are handed theirs by `$(cat ...)` on the command line: a missing
+    // file there is not an error, it is an empty prompt, and a seat that was
+    // told nothing looks exactly like a seat that is thinking. Claude Code's
+    // `--append-system-prompt-file` fails loudly; the others cannot, so the
+    // check belongs here rather than in the flags.
+    const missing: string[] = [];
+    for (const which of ['lead', 'peer'] as const) {
+      try {
+        await vscode.workspace.fs.stat(
+          vscode.Uri.file(path.join(cwd, '.roundtable', name, `${which}.md`))
+        );
+      } catch {
+        missing.push(`${which}.md`);
+      }
+    }
+    if (missing.length > 0) {
+      vscode.window.showErrorMessage(
+        `${binary} seeded the room without ${missing.join(' or ')}, so a seat would open with no brief. ` +
+          'Update it with: bun add -g roundtable-mcp'
+      );
+      return;
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const install = 'Install roundtable';
@@ -327,8 +367,8 @@ export async function newRoom(
   const status = await statusFile(cwd);
   const roomDir = path.join('.roundtable', name);
   const seats = [
-    open(cwd, name, 'lead', lead, roomDir, topic, budget, config, setup, status),
-    open(cwd, name, 'peer', peer, roomDir, topic, budget, config, undefined, status)
+    open(cwd, name, 'lead', lead, roomDir, topic, budget, config, binary, setup, status),
+    open(cwd, name, 'peer', peer, roomDir, topic, budget, config, binary, undefined, status)
   ];
   pending = { room: name, roomDir, cwd, seats };
   await release(cwd);
@@ -390,6 +430,12 @@ async function brief(binary: string, room: string, cwd: string): Promise<void> {
         continue;
       }
       waiting.delete(entry.seat);
+      if (seat.briefed) {
+        // It read its brief on the way in and is already working. Typing at it
+        // now costs a turn and starts nothing.
+        log(`room: ${entry.seat} connected, already briefed on its command line`);
+        continue;
+      }
       log(`room: ${entry.seat} connected, sending its brief`);
       await type(seat.terminal, seat.kickoff);
     }
@@ -457,14 +503,16 @@ async function pickSeat(
     const only = models[0];
     const flags = agent.roomArgs ?? '';
     const leadFlags = agent.leadRoomArgs ?? '';
+    const briefIsPrompt = agent.roomBriefIsPrompt === true;
     return only?.value
       ? {
           label: `${agent.label} · ${only.label}`,
           command: `${command} ${flag(agent)} ${only.value}`,
           roomArgs: flags,
-          leadRoomArgs: leadFlags
+          leadRoomArgs: leadFlags,
+          briefIsPrompt
         }
-      : { label: agent.label, command, roomArgs: flags, leadRoomArgs: leadFlags };
+      : { label: agent.label, command, roomArgs: flags, leadRoomArgs: leadFlags, briefIsPrompt };
   }
 
   const model = await vscode.window.showQuickPick(
@@ -477,14 +525,16 @@ async function pickSeat(
   const value = model.model.value;
   const flags = agent.roomArgs ?? '';
   const leadFlags = agent.leadRoomArgs ?? '';
+  const briefIsPrompt = agent.roomBriefIsPrompt === true;
   return value
     ? {
         label: `${agent.label} · ${model.model.label}`,
         command: `${command} ${flag(agent)} ${value}`,
         roomArgs: flags,
-        leadRoomArgs: leadFlags
+        leadRoomArgs: leadFlags,
+        briefIsPrompt
       }
-    : { label: agent.label, command, roomArgs: flags, leadRoomArgs: leadFlags };
+    : { label: agent.label, command, roomArgs: flags, leadRoomArgs: leadFlags, briefIsPrompt };
 }
 
 function flag(agent: AgentChoice): string {
@@ -551,7 +601,8 @@ function roomArgs(
   agent: Seated,
   roomDir: string,
   room: string,
-  seat: Seat
+  seat: Seat,
+  binary: string
 ): string {
   const override = config.get<string>('roundtable.agentArgs', '').trim();
   // The lead's own list when it has one. Only the lead: the peer's tools are
@@ -561,6 +612,12 @@ function roomArgs(
     .replaceAll('${roomDir}', roomDir)
     .replaceAll('${room}', room)
     .replaceAll('${seat}', seat)
+    // Not every agent reads an MCP config file. Codex takes its servers as
+    // `-c mcp_servers.<name>.command=...` on the command line, so the flags
+    // have to be able to name the binary the room is actually running -- which
+    // is a setting, not a constant. Without this the only way to seat such an
+    // agent is to hardcode a path that is right on one machine.
+    .replaceAll('${binary}', binary)
     .trim();
 }
 
@@ -581,6 +638,7 @@ function open(
   topic: string,
   budget: number,
   config: vscode.WorkspaceConfiguration,
+  binary: string,
   setup?: string,
   status?: string
 ): SeatTerminal {
@@ -620,7 +678,7 @@ function open(
   // once the room does -- which is what lets an agent be pointed straight at the
   // room's own MCP config instead of discovering the worktree's and asking
   // whether the user trusts it.
-  const extra = roomArgs(config, agent, roomDir, room, seat);
+  const extra = roomArgs(config, agent, roomDir, room, seat, binary);
 
   // The kickoff goes in as an argument to the agent rather than typed after it,
   // so there is no race against a TUI that has not finished starting. Agents
@@ -637,7 +695,7 @@ function open(
   const line = `${agent.command}${extra ? ` ${extra}` : ''}`;
   log(`room: ${seat} runs: ${line}`);
   terminal.sendText(line);
-  return { seat, terminal, kickoff };
+  return { seat, terminal, kickoff, briefed: agent.briefIsPrompt };
 }
 
 /**

@@ -161,6 +161,17 @@ permissions are settled up front too, because the peer spends most of a room
 parked inside one tool call, and an agent stopped at a prompt is a conversation
 that never starts.
 
+**Copilot and Codex seats need a POSIX shell.** Neither CLI has a
+system-prompt flag, so their brief is handed over as `$(cat …)` on the command
+line, which `cmd.exe` and PowerShell do not expand the same way. On Windows,
+seat Claude Code.
+
+**Codex seats are read-only, including the lead.** Codex fences writes with
+`sandbox_mode=read-only` rather than a tool list, and a sandbox cannot make an
+exception for git — so a Codex lead writes its spec through the room's
+`write_spec` and cannot commit it. Seat Claude Code or Copilot as the lead if
+you want the commit too.
+
 **Git is the exception, and only the lead has it.** It is the seat that produces
 something, so it is the one that might commit the spec: it gets `Bash(git:*)`
 through `leadRoomArgs`, while the peer keeps `Bash` denied outright. Nothing
@@ -170,7 +181,10 @@ reading, and `git stash` is shared across every worktree in the repository.
 
 **None of that is yours to configure.** The flags live on the agent entry in
 `parallelo.agents` as `roomArgs` — plus `leadRoomArgs` where the lead needs more
-than the peer — and Claude Code ships with working ones. An
+than the peer — and Claude Code, GitHub Copilot and Codex all ship with working
+ones, each written in that CLI's own syntax. Claude Code's and Copilot's were
+checked against the real binary; Codex's come from OpenAI's documentation,
+because that CLI is not installed here. An
 agent with no `roomArgs` is refused a seat rather than opened, because a seat
 that cannot reach the server produces a terminal that sits there doing nothing
 and looks exactly like one that is thinking. To seat an agent Parallelo does not
@@ -186,8 +200,12 @@ somewhere outside the repo and every seat opens in unfamiliar territory and
 stops to ask whether you trust it — in both terminals, every room.
 
 **You do not type anything into either terminal.** The topic you gave the
-dialog is the whole brief, and it reaches both seats in their system prompts.
-Parallelo then waits for each seat to appear in the room — an agent registers
+dialog is the whole brief, and it reaches each seat before the seat can be
+typed at — in the system prompt for Claude Code, and as the opening prompt on
+the command line for GitHub Copilot and Codex, which have no system-prompt
+flag. Either
+way it is an argument to the agent, not text typed at a TUI that is still
+starting. Parallelo then waits for each seat to appear in the room — an agent registers
 with the server the moment it has finished starting, which is the only reliable
 signal that it is ready to be told anything — and sends that seat its opening
 line. The lead posts first; the peer is already parked inside
@@ -390,7 +408,7 @@ moment.
 
 | Setting | Default | What it does |
 |---|---|---|
-| `parallelo.agents` | Claude Code, Codex, GitHub Copilot, Shell | Agents offered when starting a session |
+| `parallelo.agents` | Claude Code, Codex, GitHub Copilot, Shell | Agents offered when starting a session or a room, each with its models and its room flags |
 | `parallelo.worktreePath` | `.worktrees` | Where new worktrees go, relative to the repo root |
 | `parallelo.branchPrefix` | `session/` | Prefix for branches created for new sessions |
 | `parallelo.autoOpenRepository` | `true` | Register a worktree with git when a terminal enters it |
