@@ -1,5 +1,59 @@
 # Changelog
 
+## [1.3.0] - 2026-09-10
+
+### Added
+- **GitHub Copilot and Codex can take a seat in a brainstorming room.** Both
+  were refused one until now: a seat with no room flags is turned away rather
+  than opened, and only Claude Code shipped any, so picking Copilot for both
+  seats ended in an error instead of a room.
+
+  The flags are each CLI's own syntax, not a translation of Claude Code's.
+  Copilot's were checked against the real binary, and three of its facts
+  contradict the obvious guess. `--add-dir` advertises loading a directory's
+  `.github/agents` and does not, so custom agents come only from the working
+  directory — which would mean writing a brief into the worktree's `.github/`,
+  and a room writes nothing there but its spec. There is no
+  `--append-system-prompt-file` equivalent at all, so the brief goes in as
+  `-i "$(cat …)"`: still an argument to the agent, never text typed at a TUI
+  that is still starting, which is what that rule protects. And `apply_patch`
+  is rejected by `--excluded-tools`, so the write fence is `--deny-tool write`,
+  which beats even `--allow-all-tools` — measured, with the file not created
+  while the model reported that it had been.
+
+  Codex fences writes with `sandbox_mode=read-only` rather than a tool list,
+  and a sandbox cannot carve out an exception for git, so a Codex lead writes
+  its spec through the room's `write_spec` and cannot commit it. Seat Claude
+  Code or Copilot as the lead if you want the commit too. Its flags come from
+  OpenAI's documentation rather than from the binary, which is not installed
+  here — the one seat in the room that has not been run.
+
+- **`${binary}` in `roomArgs`.** Not every agent reads an MCP config file;
+  Codex names its server on the command line, so the flags have to be able to
+  say which roundtable the room is running. Without it the only way to seat
+  such an agent is a hardcoded path that is right on one machine.
+
+- **Every agent offers its models.** Claude Code had a hardcoded four, Codex
+  and Copilot had none, so neither was ever asked which model a seat should
+  run. Each now offers about ten recent ones plus the CLI's own default.
+
+  Copilot's are the ids its CLI actually fetched, not a docs list, and they are
+  not the ids they look like — Copilot spells them `claude-haiku-4.5` and
+  `claude-fable-5.1` where Anthropic spells the same models `claude-haiku-4-5`
+  and `claude-fable-5-1`. The lists are a cache: no CLI has a command that
+  lists models, so they go stale on the vendors' schedule and are yours to edit
+  in `parallelo.agents`.
+
+### Notes
+- Copilot and Codex seats need a **POSIX shell**: neither CLI has a
+  system-prompt flag, so the brief is handed over as `$(cat …)` on the command
+  line. On Windows, seat Claude Code.
+- A room now refuses to open if seeding did not write both briefs. `cat` of a
+  missing file is an empty prompt, not an error, and a seat that was told
+  nothing looks exactly like one that is thinking.
+- A seat briefed on its command line is no longer typed at once it connects —
+  it is already mid-turn, so the kickoff only cost it a round.
+
 ## [1.2.0] - 2026-09-09
 
 ### Added

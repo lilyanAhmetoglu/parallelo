@@ -30,6 +30,12 @@ export interface AgentChoice {
    */
   roomArgs?: string;
   /**
+   * The agent takes its brief as an opening prompt rather than a system prompt,
+   * so it is already working by the time it reaches the room and must not be
+   * typed at again.
+   */
+  roomBriefIsPrompt?: boolean;
+  /**
    * Room flags for the lead seat only, when it needs more than the peer does.
    *
    * The lead is the one that produces something -- it writes the spec and it is

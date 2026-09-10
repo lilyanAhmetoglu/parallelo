@@ -61,6 +61,64 @@ and with a boundary drawn:
   rooms died this way before the cause was found. `--append-system-prompt-file`
   with a `${seat}` placeholder is the delivery mechanism; the typed line only
   starts the turn.
+
+- **Each agent's room flags are that agent's own syntax, verified against its
+  binary.** Copilot's seats were written by running the CLI, not from
+  documentation, and three of its facts contradict the obvious guess:
+  `--add-dir` advertises loading a directory's `.github/agents` and does not,
+  so custom agents come only from the cwd -- which would mean writing a brief
+  into the worktree's `.github/`, and a room writes nothing there. There is no
+  `--append-system-prompt-file` equivalent at all, so the brief goes in as
+  `-i "$(cat ${roomDir}/${seat}.md)"`: still an argument, never typed input,
+  which is what the rule above is actually protecting. And `apply_patch` is
+  rejected by `--excluded-tools`, so the write fence is `--deny-tool write`,
+  which beats even `--allow-all-tools` -- measured, with the file not created
+  while the model claimed it had been.
+
+  Codex is the one seat written from documentation rather than from the binary,
+  because it is not installed here -- asked for deliberately, 2026-09-10. It
+  fences writes with `sandbox_mode=read-only` instead of a tool list, and a
+  sandbox cannot make an exception for git, so the Codex lead has no git and
+  there is no `leadRoomArgs` to write. Its server is named on the command line
+  (`-c mcp_servers.roundtable.command=${binary}`) rather than in a config file,
+  which is why `${binary}` is substituted at all. Two things to check the first
+  time a Codex room runs: that `write_spec` still works from inside a read-only
+  sandbox -- MCP tools run in their own process and are reported not to be
+  sandboxed, which is what the lead depends on -- and that Codex takes its
+  opening prompt positionally.
+
+  **Both of those seats need a POSIX shell.** `$(cat ...)` is how a brief
+  reaches an agent with no system-prompt flag, and it is expanded by whatever
+  shell the terminal opens -- so on `cmd.exe` the literal `$(cat ...)` becomes
+  the prompt and on PowerShell the markdown is flattened to one line. Claude
+  Code's flags are shell-neutral and stay the Windows answer. Accepted rather
+  than solved: inlining the brief text into the command line instead trades one
+  quoting problem for a worse one.
+
+  **A missing brief is silent where a missing flag is not**, which is why
+  `newRoom` stats `lead.md` and `peer.md` after seeding and refuses the room if
+  either is absent. `cat` of a file that is not there expands to the empty
+  string, so the seat opens with no prompt at all and looks exactly like one
+  that is thinking -- the same failure as the empty `agentArgs` default, by a
+  different route.
+
+  **A seat briefed on its command line must not be typed at again.** The
+  kickoff exists to start a turn in an agent parked at its input box; Copilot
+  and Codex are already mid-turn when they register, so the line is eaten or
+  costs a round. `roomBriefIsPrompt` on the agent entry is what says which
+  shape an agent is, and `Send Brainstorming Room Brief` still types it by hand
+  for a seat that was restarted.
+
+- **Model lists are read from the agent, not from a guess.** Copilot's ids came
+  out of the CLI's own `/models` response, captured with `--log-level all
+  --log-dir` on a run that was going to fail anyway, so the list is the
+  account's own and cost nothing. They are not the ids they look like: Copilot
+  spells them `claude-haiku-4.5` and `claude-fable-5.1` where Anthropic spells
+  the same models `claude-haiku-4-5` and `claude-fable-5-1`. Neither CLI has a
+  command that lists models, and GitHub's internal token endpoint answers 403 to
+  third-party OAuth apps, so there is no live lookup to build -- the lists are
+  cached in `parallelo.agents` and go stale on the vendors' schedule, not ours.
+
 - **The seats cannot write files, and that is enforced, not requested.** An
   agent holding a file tool will implement rather than plan -- a Haiku lead
   given `Write` and `Bash` wrote the whole feature and never opened the room. So
