@@ -516,10 +516,57 @@ export async function newSession(
   await tracker.sync();
 }
 
+/** Whether `refs/heads/<branch>` exists in the repository at `dir`. */
+async function branchExists(dir: string, branch: string): Promise<boolean> {
+  try {
+    // `--verify --quiet` prints nothing and exits non-zero when the ref is
+    // absent, so the throw is the answer rather than a failure to report.
+    await git(dir, ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A branch name for a new session that nothing is already using.
+ *
+ * A new session gets a new branch, always. Removing a session keeps its branch
+ * -- that is the promise the remove dialog makes out loud -- so after a delete
+ * the name is free in `.worktrees` and still taken in `refs/heads`. Checking
+ * that old branch out again is what "I deleted the session and made it again
+ * and got last week's work back" actually was: the worktree comes up holding
+ * commits from a session that was deliberately thrown away, and nothing says
+ * so, because from the outside a resumed branch and a fresh one look the same.
+ *
+ * So the suffix counts up instead. The old branch stays exactly where
+ * `removeWorktree` left it, and the remove dialog's Delete Branch button is
+ * how the plain name comes back.
+ */
+async function freeBranch(base: string, branch: string): Promise<string> {
+  if (!(await branchExists(base, branch))) {
+    return branch;
+  }
+  // Bounded: a session name with a hundred abandoned branches behind it is a
+  // different problem, and an unbounded loop here would hang the picker rather
+  // than let git say something useful.
+  for (let n = 2; n <= 100; n++) {
+    const candidate = `${branch}-${n}`;
+    if (!(await branchExists(base, candidate))) {
+      return candidate;
+    }
+  }
+  // Hand the taken name back and let `git worktree add -b` refuse it by name.
+  // Inventing a random suffix here would succeed at producing a branch nobody
+  // asked for.
+  return branch;
+}
+
 /**
  * Add the worktree for `name`, copy the untracked files that do not come with
- * it, and register it with the git extension. Reuses the branch if it already
- * exists. Reports its own failure and rethrows.
+ * it, and register it with the git extension. Always branches fresh off the
+ * base checkout, never resuming a branch left behind by a deleted session --
+ * see `freeBranch`. Reports its own failure and rethrows.
  */
 export async function createWorktree(
   gitApi: GitAPI,
@@ -533,7 +580,8 @@ export async function createWorktree(
   const worktreePath = path.isAbsolute(dir)
     ? path.join(dir, name)
     : path.join(base, dir, name);
-  const branch = `${prefix}${name}`;
+  const requested = `${prefix}${name}`;
+  const branch = await freeBranch(base, requested);
 
   await vscode.window.withProgress(
     {
@@ -546,11 +594,7 @@ export async function createWorktree(
     },
     async (progress, token) => {
       try {
-        const branches = await git(base, ['branch', '--list', branch]);
-        const args = branches
-          ? ['worktree', 'add', worktreePath, branch]
-          : ['worktree', 'add', '-b', branch, worktreePath];
-        await git(base, args);
+        await git(base, ['worktree', 'add', '-b', branch, worktreePath]);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         vscode.window.showErrorMessage(`Could not create the worktree. ${message}`);
@@ -609,6 +653,20 @@ export async function createWorktree(
       await gitApi.openRepository(vscode.Uri.file(worktreePath));
     }
   );
+
+  // Said out loud, because the folder is named `name` and the branch is not.
+  // Someone who reuses a session name is usually reusing it on purpose and
+  // would otherwise have to read the Sessions view closely to notice that the
+  // branch gained a number -- and the whole point of branching fresh is that
+  // they know which work they are looking at.
+  if (branch !== requested) {
+    log(`worktree: ${requested} already exists, branched ${branch} instead`);
+    vscode.window.showInformationMessage(
+      `Started ${name} on a new branch ${branch}. ${requested} already exists ` +
+        'and was left alone, so none of its commits are in this session.'
+    );
+  }
+
   return worktreePath;
 }
 
@@ -699,9 +757,37 @@ export async function removeWorktree(
   // made there are on no branch, so removing the worktree loses them for good
   // -- the opposite of what the usual reassurance says.
   const detached = !branch || branch === 'HEAD';
+
+  // Whether deleting the branch would lose anything. Commits on it that the
+  // checkout it was branched from does not already have are the only thing a
+  // branch holds that its worktree does not, so a count of zero means the name
+  // is all that would go -- and the name is exactly what someone wants back
+  // when they delete a session and start another one called the same thing.
+  //
+  // Anything else and the button is not offered at all. A session whose agent
+  // committed is work, and a dialog that offers to throw work away in the same
+  // breath as a routine cleanup is how it gets thrown away.
+  const ahead = detached
+    ? undefined
+    : await git(base, ['rev-list', '--count', `HEAD..${branch}`])
+        .then(out => Number(out))
+        // A branch git will not count is not an empty one. Failing closed here
+        // costs a button; failing open would delete commits nobody counted.
+        .catch(() => undefined);
+  const offerDeleteBranch = !detached && ahead === 0;
+
+  // Both clauses speak only about the branch, never about the whole action.
+  // "Remove and Delete Branch loses nothing" read as a promise about the button
+  // and sat one sentence after "3 files have uncommitted changes ... will be
+  // lost" -- the same modal contradicting itself about a destructive action,
+  // since that button force-removes the worktree exactly as Remove does.
   const kept = detached
     ? 'This worktree is not on a branch, so any commits made here are lost too.'
-    : `The branch ${branch} is kept, so anything committed to it is safe.`;
+    : offerDeleteBranch
+      ? `No commits on ${branch} are missing from ${path.basename(base)}, so ` +
+        `Remove and Delete Branch frees the name without losing any of them. ` +
+        `Remove keeps the branch.`
+      : `The branch ${branch} is kept, so anything committed to it is safe.`;
 
   // What happens to the other rows, said before it happens.
   //
@@ -727,22 +813,59 @@ export async function removeWorktree(
 
   const remove = dirty === 0 && !detached ? 'Remove' : 'Remove and discard changes';
   const closeInstead = 'Close This Session';
+  const removeAndDelete = 'Remove and Delete Branch';
 
   // The safe option comes first, so it is the one the dialog defaults to.
   // Only when the worktree is shared: with a single session there is nothing
   // to disentangle, and offering the choice there would put a second button in
   // front of everyone to solve a problem they do not have.
+  //
+  // Delete Branch comes last, after the button that keeps it. It is the one
+  // action here that reaches past the worktree into the repository, so it is
+  // the one nobody should land on by pressing Enter.
   const confirm = await vscode.window.showWarningMessage(
     `Remove the worktree at ${path.basename(worktreeRoot)}?`,
     { modal: true, detail },
-    ...(sessions > 1 ? [closeInstead, remove] : [remove])
+    ...(sessions > 1 ? [closeInstead, remove] : [remove]),
+    ...(offerDeleteBranch ? [removeAndDelete] : [])
   );
   if (confirm === closeInstead) {
     return 'closeSession';
   }
-  if (confirm !== remove) {
+  if (confirm !== remove && confirm !== removeAndDelete) {
     return 'kept';
   }
+
+  /**
+   * What is said and done once the directory is actually gone.
+   *
+   * The branch is deleted here rather than before, because git refuses to
+   * delete a branch that is checked out -- and until the worktree is removed,
+   * this one is. Plain `-d`, never `-D`: the button is only offered when
+   * nothing is ahead, so a git that disagrees has found something this did not
+   * and is right to stop.
+   */
+  const done = async (): Promise<RemoveOutcome> => {
+    const name = path.basename(worktreeRoot);
+    if (confirm !== removeAndDelete) {
+      vscode.window.showInformationMessage(`Removed worktree ${name}.`);
+      return 'removed';
+    }
+    try {
+      await git(base, ['branch', '--delete', branch]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // The worktree is gone either way, so this is not a failed removal --
+      // only a branch that outlived it, which the user has to be told about or
+      // the name will still be taken next time they use it.
+      vscode.window.showWarningMessage(
+        `Removed worktree ${name}, but the branch ${branch} is still there. ${clean(message)}`
+      );
+      return 'removed';
+    }
+    vscode.window.showInformationMessage(`Removed worktree ${name} and deleted ${branch}.`);
+    return 'removed';
+  };
 
   try {
     await git(base, ['worktree', 'remove', '--force', worktreeRoot]);
@@ -758,13 +881,11 @@ export async function removeWorktree(
         vscode.window.showErrorMessage(`Could not remove the worktree. ${clean(failure)}`);
         return 'kept';
       }
-      vscode.window.showInformationMessage(`Removed worktree ${path.basename(worktreeRoot)}.`);
-      return 'removed';
+      return done();
     }
     vscode.window.showErrorMessage(`Could not remove the worktree. ${clean(message)}`);
     return 'kept';
   }
 
-  vscode.window.showInformationMessage(`Removed worktree ${path.basename(worktreeRoot)}.`);
-  return 'removed';
+  return done();
 }

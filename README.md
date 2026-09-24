@@ -8,7 +8,7 @@
 
 **One window. Many agents. Each one's changes, exactly when you look at it.**
 
-[![Marketplace](https://img.shields.io/badge/VS%20Code-v1.3.0-7C5CFC?style=for-the-badge&labelColor=1e1e1e)](https://marketplace.visualstudio.com/items?itemName=LilyanALDIMASHKI.parallelo-session)
+[![Marketplace](https://img.shields.io/badge/VS%20Code-v1.3.1-7C5CFC?style=for-the-badge&labelColor=1e1e1e)](https://marketplace.visualstudio.com/items?itemName=LilyanALDIMASHKI.parallelo-session)
 [![Open VSX](https://img.shields.io/open-vsx/v/LilyanALDIMASHKI/parallelo-session?style=for-the-badge&label=Open%20VSX&labelColor=1e1e1e&color=7C5CFC)](https://open-vsx.org/extension/LilyanALDIMASHKI/parallelo-session)
 [![MIT](https://img.shields.io/badge/licence-MIT-7A8291?style=for-the-badge&labelColor=1e1e1e)](LICENSE)
 
@@ -46,13 +46,13 @@ terminal is the only contract.**
 | 📝 **Session commits** | What this session has committed since it branched, one row per commit, files underneath. |
 | ⚠️ **Conflict radar** | Two sessions editing the same file get marked before they collide. |
 | 🗂️ **Sessions** | Every terminal in a worktree, with branch, drift (`↑2 ↓1`) and change count. Drag to reorder, drag to pin. |
-| 🌲 **Files** | A file tree rooted at the active worktree. |
+| 🌲 **Files** | A file tree rooted at the active worktree, and a full-text search scoped to it. |
 | 🚀 **Every worktree from the start** | A terminal opens in each one when the window does, so none stays invisible. |
 | ● **Waiting / done** | A session marks itself when its agent asks you something or finishes a turn. Clears when you look at it. |
 | 🎨 **Session appearance** | Name, colour and icon per worktree, remembered across reloads. |
 | 📊 **Status bar** | Active branch and change count. Click to switch session. |
 | ➕ **Start Session** | Creates the branch and worktree, copies your ignored files, installs dependencies, launches the agent. |
-| 🗑️ **Delete Worktree** | Removes the directory, keeps the branch, always asks first. Says how many sessions share that worktree, and offers to close just one. |
+| 🗑️ **Delete Worktree** | Removes the directory, keeps the branch, always asks first. Says how many sessions share that worktree, and offers to close just one — or to delete the branch too, when nothing would be lost. |
 
 ## 📦 Requirements
 
@@ -352,6 +352,26 @@ and goes with the directory — the confirmation tells you how many files that i
 Nothing is ever moved into your main checkout. Use **Close Session** if you just
 want the row gone — it closes that one terminal, and leaves any other session in
 the same checkout running.
+
+When the branch holds nothing your base checkout does not already have, the
+confirmation offers **Remove and Delete Branch** as well. That is how a session
+name becomes free again. It is never offered for a branch with commits of its
+own, so the button cannot throw away an agent's work.
+
+🌱 **A new session always gets a new branch.** Because deleting a worktree keeps
+its branch, a name you have used before is free in `.worktrees` and still taken
+in `refs/heads`. Parallelo will not silently check that old branch out —
+starting `foo` again branches `session/foo-2` off your base checkout and says
+so. The old branch is left exactly where it was.
+
+🔍 **Search looks inside the session's files, not just at their names.** The
+magnifier on the Files view opens VS Code's own Search panel with *files to
+include* already pointed at the active worktree, so a query finds text anywhere
+under it and nowhere else — switch terminals and the scope follows, like
+everything else here. It deliberately ignores your `.gitignore` for that search,
+because the default worktree location is `.worktrees`, which most repositories
+ignore; without that, searching a session would quietly return nothing. The find
+box on the tree itself is unchanged and still filters the rows you can see.
 
 📦 **A new worktree arrives ready to run.** `git worktree add` checks out
 tracked files and nothing else, so a fresh session has no `.env`, no

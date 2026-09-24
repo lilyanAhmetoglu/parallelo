@@ -27,7 +27,17 @@ export class FilesProvider implements vscode.TreeDataProvider<Entry> {
 
   private get root(): vscode.Uri | undefined {
     const session = this.tracker.activeSession;
-    return session?.repository?.rootUri ?? session?.cwd;
+    // `root` first, and the same order the view's own Search command uses.
+    // `repository` is not this worktree in every case: with
+    // `autoOpenRepository` off, a terminal in `<repo>/.worktrees/foo` matches
+    // the parent `<repo>` by containment, and the tree then listed the whole
+    // main checkout while its magnifier searched the worktree. `root` is the
+    // worktree found on disk, and it resolves before git does.
+    return (
+      (session?.root !== undefined ? vscode.Uri.file(session.root) : undefined) ??
+      session?.repository?.rootUri ??
+      session?.cwd
+    );
   }
 
   async getChildren(element?: Entry): Promise<Entry[]> {
