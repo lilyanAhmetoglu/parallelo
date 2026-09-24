@@ -218,16 +218,87 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   };
 
   /**
-   * Stamp the starting commit of every session that has not got one.
+   * Opens a tree's own find box, which filters the rows it has already loaded.
    *
-   * Has to run on every change rather than once: a session's repository
-   * resolves asynchronously, and a worktree entered ten minutes from now still
-   * wants a baseline from the moment it was first seen rather than from
-   * whenever somebody asks.
+   * That is all `list.find` is. It is the right tool for the Changes view,
+   * whose rows are the whole of what there is to look through, and the wrong
+   * one for a file tree -- see `searchInSession`.
    */
   const findIn = async (view: string): Promise<void> => {
     await vscode.commands.executeCommand(`${view}.focus`);
     await vscode.commands.executeCommand('list.find');
+  };
+
+  /**
+   * Full-text search across the active session's worktree, in VS Code's own
+   * Search panel.
+   *
+   * The Files view used to answer its magnifier with `list.find`, and a tree's
+   * find box matches the labels of rows the tree has already built -- so a
+   * collapsed folder is invisible to it and file contents never were. That is a
+   * row filter wearing a magnifier, and the Files view is exactly where someone
+   * goes looking for a line of code. Delegate to the real search rather than
+   * growing one here.
+   *
+   * `useExcludeSettingsAndIgnoreFiles: false` is load-bearing, not tidying. The
+   * default worktree path is `.worktrees`, which is precisely the kind of
+   * directory a repository gitignores, and search honours `.gitignore` -- so
+   * with it left on, a search scoped to a session returns nothing at all and
+   * looks broken in a way that points at the wrong thing.
+   *
+   * But that one flag turns off `search.exclude` and `files.exclude` as well as
+   * `.gitignore`, and only `.gitignore` is in the way. Parallelo runs an install
+   * in every new worktree, so leaving it at that means the first search in a
+   * JS session is thousands of `node_modules` hits. So the excludes are read
+   * back out of configuration and handed over explicitly: the user's own
+   * exclusions still apply, and only the ignore files are bypassed.
+   *
+   * `triggerSearch: false` because the query starts empty: searching for
+   * nothing would paint an error under the box before a key is pressed. The
+   * empty `query` goes with it -- without it the panel keeps the last search's
+   * text *and its results*, which then sit under this session's include path
+   * looking like they came from it.
+   */
+  const searchInSession = async (): Promise<void> => {
+    const session = tracker.activeSession;
+    // Same order the Files view roots its tree at, so the magnifier searches
+    // what the tree beneath it is showing. `root` first: it is the worktree
+    // found on disk, while `repository` can still be resolving -- or, with
+    // `autoOpenRepository` off, can be the parent checkout rather than this
+    // worktree at all.
+    const root = session?.root ?? session?.repository?.rootUri.fsPath ?? session?.cwd.fsPath;
+    if (!root) {
+      vscode.window.showInformationMessage(
+        'No session is active yet, so there is no worktree to search. ' +
+          'Focus a terminal that is in one.'
+      );
+      return;
+    }
+
+    // Scoped to the worktree, so a folder-level `search.exclude` set for this
+    // project is the one that applies.
+    const scoped = vscode.workspace.getConfiguration(undefined, vscode.Uri.file(root));
+    const globs = (section: string): string[] =>
+      Object.entries(scoped.get<Record<string, unknown>>(section) ?? {})
+        // `true` only. A glob can also carry a `{ when: ... }` sibling clause
+        // that VS Code evaluates itself, and there is no way to pass one
+        // through this command -- dropping those is better than mangling them.
+        .filter(([, on]) => on === true)
+        // A comma is the separator in this box, so a glob containing one would
+        // silently split into two wrong patterns.
+        .filter(([glob]) => !glob.includes(','))
+        .map(([glob]) => glob);
+
+    await vscode.commands.executeCommand('workbench.action.findInFiles', {
+      // An absolute path in "files to include" scopes the search to that
+      // directory, workspace folder or not -- which is what makes this work for
+      // a worktree the user never added to their workspace.
+      filesToInclude: root,
+      filesToExclude: [...globs('search.exclude'), ...globs('files.exclude')].join(','),
+      useExcludeSettingsAndIgnoreFiles: false,
+      query: '',
+      triggerSearch: false
+    });
   };
 
   /**
@@ -256,6 +327,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     });
 
+  /**
+   * Stamp the starting commit of every session that has not got one.
+   *
+   * Has to run on every change rather than once: a session's repository
+   * resolves asynchronously, and a worktree entered ten minutes from now still
+   * wants a baseline from the moment it was first seen rather than from
+   * whenever somebody asks.
+   */
   const stampBaselines = async (): Promise<void> => {
     await Promise.all(
       tracker.allSessions.filter(isListed).map(session => baselines.ensure(session))
@@ -482,9 +561,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
      * VS Code for every contributed view, and `list.find` acts on whatever list
      * has focus, so the order of the two matters.
      */
-    vscode.commands.registerCommand('parallelo.findInFiles', () =>
-      findIn('worktreeSessions.files')
-    ),
+    vscode.commands.registerCommand('parallelo.findInFiles', () => searchInSession()),
 
     vscode.commands.registerCommand('parallelo.findInChanges', () =>
       findIn('worktreeSessions.changes')

@@ -2,7 +2,7 @@
   "name": "parallelo-session",
   "displayName": "Parallelo Session",
   "description": "Binds the active terminal to its git worktree. Switch terminals, and the changes and files views follow.",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "publisher": "LilyanALDIMASHKI",
   "license": "MIT",
   "engines": {
@@ -230,7 +230,7 @@
       },
       {
         "command": "parallelo.findInFiles",
-        "title": "Find in Files",
+        "title": "Search This Session",
         "category": "Parallelo Session",
         "icon": "$(search)"
       },
@@ -812,7 +812,7 @@
         "parallelo.alwaysShowFind": {
           "type": "boolean",
           "default": true,
-          "description": "Open the find box automatically when the Changes or Files view appears, so it is always there. Opening it also puts the cursor in it. Turn this off to open it with the magnifier or Cmd+F instead."
+          "description": "Open the row filter automatically when the Changes or Files view appears, so it is always there. Opening it also puts the cursor in it. Turn this off to open it with Cmd+F instead. This is the filter over visible rows, not the Files view's magnifier, which searches the whole worktree."
         },
         "parallelo.roundtable.command": {
           "type": "string",

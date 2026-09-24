@@ -1,5 +1,50 @@
 # Changelog
 
+## [1.3.1] - 2026-09-24
+
+### Fixed
+- **Searching a session now searches its files, not its visible rows.** The
+  magnifier on the Files view ran VS Code's tree find box, which matches the
+  labels of rows the tree has already built — so a collapsed folder was
+  invisible to it and file contents never were at all. It was a row filter
+  wearing a magnifier.
+
+  It now opens the Search panel with *files to include* set to the active
+  worktree, and follows the terminal like every other view here. It turns off
+  `useExcludeSettingsAndIgnoreFiles` for that search on purpose: the default
+  worktree location is `.worktrees`, which most repositories gitignore, and
+  search honours `.gitignore` — so without it a scoped search returned nothing
+  and looked broken in a way that pointed at the wrong thing. The tree's own
+  find box is unchanged, and the Changes view still uses it, where the rows
+  really are the whole of what there is to look through.
+
+- **The Files tree roots itself at the worktree, not at whichever repository
+  git matched.** With `parallelo.autoOpenRepository` off, a terminal in
+  `<repo>/.worktrees/foo` matches the parent checkout by containment, and the
+  tree listed the whole main checkout. It now uses the worktree found on disk,
+  which is also what the view's search scopes to, so the two agree.
+
+- **Starting a session with a name you used before no longer checks out the
+  old branch.** Deleting a worktree keeps its branch — that is the promise the
+  confirmation makes — so the name came back free in `.worktrees` and still
+  taken in `refs/heads`, and the next session with that name silently resumed
+  the branch you had thrown away. The worktree opened holding last week's
+  commits, and nothing said so, because from the outside a resumed branch and a
+  fresh one look identical.
+
+  A new session now always gets a new branch: `session/foo-2` when `session/foo`
+  exists, with a notification naming it and confirming the old branch was left
+  alone.
+
+### Added
+- **Remove and Delete Branch**, a third button on the worktree confirmation. It
+  appears only when `git rev-list --count HEAD..<branch>` is zero — nothing on
+  the branch that your base checkout does not already have — so it can free a
+  session name without ever being able to discard an agent's commits. Deletion
+  runs after the worktree is gone, since git will not delete a checked-out
+  branch, and uses `--delete` rather than `--force`; if git objects anyway you
+  are told the branch survived rather than left to assume it did not.
+
 ## [1.3.0] - 2026-09-10
 
 ### Added
